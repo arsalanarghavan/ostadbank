@@ -4,7 +4,7 @@ from sqlalchemy.orm import sessionmaker, joinedload
 from contextlib import contextmanager
 import math
 from models import (engine, create_tables, User, Admin, BotText, Field,
-                    Major, Professor, Course, Experience)
+                    Major, Professor, Course, Experience, ExperienceStatus)
 import config
 
 Session = sessionmaker(bind=engine)
@@ -27,13 +27,10 @@ def initialize_database():
     """Create database tables and populate default texts if they don't exist."""
     create_tables()
     with session_scope() as session:
-        # Add owner as the first admin if not already present
         if not session.query(Admin).filter_by(user_id=config.OWNER_ID).first():
             session.add(Admin(user_id=config.OWNER_ID))
-
-        # --- All bot texts are managed here ---
+        
         default_texts = {
-            # --- General Messages ---
             'welcome': '🤖 به ربات بانک اساتید خوش آمدید!',
             'rules': '📜 **قوانین و سوالات متداول:**\n\n۱. لطفا در بیان تجربیات خود صادق باشید.\n۲. از به کار بردن الفاظ توهین‌آمیز خودداری کنید.',
             'my_experiences_empty': 'شما هنوز تجربه‌ای ثبت نکرده‌اید.',
@@ -43,24 +40,20 @@ def initialize_database():
             'item_added_successfully': '✅ آیتم جدید با موفقیت اضافه شد.',
             'item_deleted_successfully': '🗑️ آیتم با موفقیت حذف شد.',
             'item_updated_successfully': '✏️ آیتم با موفقیت ویرایش شد.',
-
-            # --- Submission Flow ---
             'submission_start': '✅ بسیار خب! فرآیند ثبت تجربه آغاز شد.\n\nلطفا **رشته تحصیلی** خود را از لیست زیر انتخاب کنید:',
             'choose_major': '📚 عالی! حالا **گرایش** خود را انتخاب کنید:',
             'choose_course': '📝 لطفا **درس** مورد نظر را انتخاب کنید:',
             'choose_professor': '👨🏻‍🏫 لطفا **استاد** این درس را انتخاب کنید.',
             'add_new_professor_prompt': 'لطفا نام کامل استاد جدید را وارد کنید:',
-            'ask_teaching_style': '✏️ لطفا درباره **سبک تدریس** استاد توضیح دهید.',
-            'ask_notes': '📚 آیا استاد **جزوه** خاصی دارند یا منبع خاصی معرفی می‌کنند؟',
-            'ask_project': '💻 آیا این درس **پروژه** دارد؟ در صورت وجود، درباره آن توضیح دهید.',
+            'ask_teaching_style': '✏️ لطفا درباره **سبک تدریس** استاد توضیح دهید (حداکثر ۱۰۰۰ کاراکتر).',
+            'ask_notes': '📚 آیا استاد **جزوه** خاصی دارند یا منبع خاصی معرفی می‌کنند؟ (حداکثر ۱۰۰۰ کاراکتر)',
+            'ask_project': '💻 آیا این درس **پروژه** دارد؟ در صورت وجود، درباره آن توضیح دهید (حداکثر ۱۰۰۰ کاراکتر).',
             'ask_attendance_choice': '🕒 آیا استاد بر روی **حضور و غیاب** حساس هستند؟',
-            'ask_attendance_details': 'لطفا جزئیات **حضور و غیاب** را بنویسید (مثلا: «در هر جلسه حساس هستند» یا «فقط در انتهای ترم لیست را چک می‌کنند»).',
-            'ask_exam': '⭕️ درباره **امتحان** پایان‌ترم توضیح دهید (مثلا: «سخت‌گیر هستند و از جزوه سوال می‌دهند»).',
-            'ask_conclusion': '⚠️ و در آخر، به عنوان **نتیجه‌گیری**، چه توصیه‌ای برای دانشجویان دارید؟',
+            'ask_attendance_details': 'لطفا جزئیات **حضور و غیاب** را بنویسید (حداکثر ۱۰۰۰ کاراکتر).',
+            'ask_exam': '⭕️ درباره **امتحان** پایان‌ترم توضیح دهید (حداکثر ۱۰۰۰ کاراکتر).',
+            'ask_conclusion': '⚠️ و در آخر، به عنوان **نتیجه‌گیری**، چه توصیه‌ای برای دانشجویان دارید؟ (حداکثر ۱۰۰۰ کاراکتر)',
             'submission_success': '👌 تجربه شما با موفقیت ثبت و برای بررسی به ادمین‌ها ارسال شد. متشکریم!',
             'submission_cancel': '❌ فرآیند ثبت تجربه لغو شد.',
-
-            # --- Admin Panel ---
             'admin_panel_welcome': '🔐 به پنل مدیریت خوش آمدید.',
             'admin_manage_field_header': 'مدیریت رشته‌ها 🎓',
             'admin_manage_major_header': 'مدیریت گرایش‌ها 📚',
@@ -73,8 +66,6 @@ def initialize_database():
             'confirm_delete': '⚠️ آیا از حذف "{item_name}" مطمئن هستید؟ این عمل غیرقابل بازگشت است.',
             'select_parent_field': 'لطفا رشته والد را برای این آیتم انتخاب کنید:',
             'rejection_reason_prompt': 'لطفا دلیل رد این تجربه را انتخاب کنید:',
-
-            # --- Experience Formatting ---
             'exp_format_field': '🔖 رشته',
             'exp_format_professor': '👨🏻‍🏫 استاد',
             'exp_format_course': '📝 درس',
@@ -84,6 +75,7 @@ def initialize_database():
             'exp_format_attendance': '❌ حضور و غیاب',
             'exp_format_attendance_yes': 'دارد',
             'exp_format_attendance_no': 'ندارد',
+
             'exp_format_exam': '⭕️ امتحان',
             'exp_format_conclusion': '⚠️ نتیجه گیری',
             'exp_format_footer': """➖➖➖➖➖➖➖➖➖➖
@@ -97,21 +89,15 @@ def initialize_database():
 🆔 @Shamsi_OstadBank_Bot
 ➖➖➖➖➖➖➖➖➖➖""",
             'exp_format_tags': '♊️ تگ‌ها',
-
-            # --- Statuses ---
             'status_pending': '⏳ در انتظار تایید',
             'status_approved': '✅ تایید شده',
             'status_rejected': '❌ رد شده',
-
-            # --- Admin Notifications ---
             'admin_new_experience_notification': 'یک تجربه جدید برای بررسی ثبت شد (ID: {exp_id}):\n\n',
             'admin_recheck_experience': 'بررسی مجدد تجربه ID: {exp_id}\n\n',
             'admin_approval_success': '✅ تجربه با ID {exp_id} تایید و در کانال منتشر شد.',
             'admin_rejection_success': '❌ تجربه با ID {exp_id} به دلیل «{reason}» رد شد.',
             'user_approval_notification': "✅ تجربه شما برای درس '{course_name}' تایید شد!",
             'user_rejection_notification': "❌ متاسفانه تجربه شما برای درس '{course_name}' به دلیل «{reason}» رد شد.",
-
-            # --- BUTTON TEXTS ---
             'btn_submit_experience': '✍️ ثبت تجربه',
             'btn_my_experiences': '📖 تجربه‌های من',
             'btn_rules': '📜 قوانین',
@@ -158,10 +144,8 @@ def get_paginated_texts(page=1, per_page=8):
         query = s.query(BotText).order_by(BotText.key)
         total_items = query.count()
         total_pages = math.ceil(total_items / per_page)
-
         offset = (page - 1) * per_page
         items = query.limit(per_page).offset(offset).all()
-
         return items, total_pages
 
 def is_admin(user_id):
@@ -175,15 +159,12 @@ def get_all_items(model, page=1, per_page=10):
         query = s.query(model)
         if hasattr(model, 'name'):
             query = query.order_by(model.name)
-        elif hasattr(model, 'user_id'): # برای مرتب‌سازی ادمین‌ها
+        elif hasattr(model, 'user_id'):
              query = query.order_by(model.user_id)
-
         total_items = query.count()
         total_pages = math.ceil(total_items / per_page) if per_page > 0 else 1
-
         offset = (page - 1) * per_page
         items = query.limit(per_page).offset(offset).all()
-
         return items, total_pages
 
 def get_item_by_id(model, item_id):
@@ -221,7 +202,7 @@ def add_item(model, **kwargs):
     with session_scope() as s:
         new_item = model(**kwargs)
         s.add(new_item)
-        s.flush() # To get the ID of the new item before commit
+        s.flush()
         return new_item
 
 def update_item(model, item_id, **kwargs):
@@ -234,12 +215,14 @@ def update_item(model, item_id, **kwargs):
             return True
         return False
 
-def update_experience_status(exp_id, status):
-    """Update the status of an experience (e.g., pending, approved, rejected)."""
+def update_experience_status(exp_id: int, status: ExperienceStatus):
+    """Update the status of an experience using the ExperienceStatus enum."""
     with session_scope() as s:
         exp = s.query(Experience).get(exp_id)
         if exp:
             exp.status = status
+            return True
+        return False
 
 def add_user(user_id, first_name):
     """Add a new user if they don't already exist."""
