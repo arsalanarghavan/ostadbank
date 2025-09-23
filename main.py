@@ -156,7 +156,7 @@ async def check_channel_membership(update: Update, context: ContextTypes.DEFAULT
 
 def format_experience(exp: Experience, md_version: int = 2) -> str:
     """Formats an experience object into a readable string, escaping user inputs."""
-    def_md(text):
+    def def_md(text):
         return escape_markdown(str(text), version=md_version)
     
     tags = f"#{exp.field.name.replace(' ', '_')} #{exp.major.name.replace(' ', '_')} #{exp.professor.name.replace(' ', '_')} #{exp.course.name.replace(' ', '_')}"
