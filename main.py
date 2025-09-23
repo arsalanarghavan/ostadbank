@@ -6,6 +6,7 @@ from telegram.ext import (
     Application, CommandHandler, MessageHandler, ConversationHandler,
     CallbackQueryHandler, ContextTypes, filters
 )
+from telegram.helpers import escape_markdown
 
 import config
 import database as db
@@ -22,7 +23,7 @@ logger = logging.getLogger(__name__)
  GETTING_ATTENDANCE_DETAILS, GETTING_EXAM, GETTING_CONCLUSION,
  # Admin States
  GETTING_NEW_NAME, GETTING_UPDATED_NAME, SELECTING_PARENT_FIELD, GETTING_UPDATED_TEXT,
- GETTING_ADMIN_ID # State جدید برای افزودن ادمین
+ GETTING_ADMIN_ID
 ) = range(17)
 
 # --- Helper Functions ---
@@ -36,38 +37,48 @@ async def check_admin(update: Update, context: ContextTypes.DEFAULT_TYPE) -> boo
             await update.message.reply_text(db.get_text('not_an_admin'))
     return is_admin_user
 
-def format_experience(exp: Experience) -> str:
-    """Formats an experience object into a readable string for sending in messages."""
-    tags = f"#{exp.field.name.replace(' ', '_')} #{exp.major.name.replace(' ', '_')} #{exp.professor.name.replace(' ', '_')} #{exp.course.name.replace(' ', '_')}"
-
+def format_experience(exp: Experience, md_version: int = 2) -> str:
+    """Formats an experience object into a readable string, escaping user inputs."""
+    
+    def-md(text):
+        return escape_markdown(text, version=md_version)
+    
+    tags_list = [
+        "#" + exp.field.name.replace(' ', '_'),
+        "#" + exp.major.name.replace(' ', '_'),
+        "#" + exp.professor.name.replace(' ', '_'),
+        "#" + exp.course.name.replace(' ', '_')
+    ]
+    tags = " ".join(tags_list)
+    
     attendance_text = db.get_text('exp_format_attendance_yes') if exp.attendance_required else db.get_text('exp_format_attendance_no')
 
-    return f"""{db.get_text('exp_format_field')}: {exp.field.name} ({exp.major.name})
+    return f"""{db.get_text('exp_format_field')}: {def_md(exp.field.name)} ({def_md(exp.major.name)})
 
-{db.get_text('exp_format_professor')}: {exp.professor.name}
+{db.get_text('exp_format_professor')}: {def_md(exp.professor.name)}
 
-{db.get_text('exp_format_course')}: {exp.course.name}
+{db.get_text('exp_format_course')}: {def_md(exp.course.name)}
 
 {db.get_text('exp_format_teaching')}:
-{exp.teaching_style}
+{def_md(exp.teaching_style)}
 
 {db.get_text('exp_format_notes')}:
-{exp.notes}
+{def_md(exp.notes)}
 
 {db.get_text('exp_format_project')}:
-{exp.project}
+{def_md(exp.project)}
 
 {db.get_text('exp_format_attendance')}: {attendance_text}
-{exp.attendance_details}
+{def_md(exp.attendance_details)}
 
 {db.get_text('exp_format_exam')}:
-{exp.exam}
+{def_md(exp.exam)}
 
 {db.get_text('exp_format_conclusion')}:
-{exp.conclusion}
+{def_md(exp.conclusion)}
 
 {db.get_text('exp_format_footer')}
-{db.get_text('exp_format_tags')}: {tags}"""
+{db.get_text('exp_format_tags')}: {def_md(tags)}"""
 
 # --- User Commands & Main Menu ---
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -93,18 +104,21 @@ async def my_experiences_command(update: Update, context: ContextTypes.DEFAULT_T
         exp_course = db.get_item_by_id(Course, exp.course_id)
         exp_prof = db.get_item_by_id(Professor, exp.professor_id)
         status_text = status_map.get(exp.status, exp.status)
-        response += f"**{exp_course.name}** - **{exp_prof.name}** ({status_text})\n"
+        # Escape user-generated content for Markdown
+        course_name = escape_markdown(exp_course.name, version=2)
+        prof_name = escape_markdown(exp_prof.name, version=2)
+        response += f"*{course_name}* - *{prof_name}* ({status_text})\n"
 
-    await update.message.reply_text(response, parse_mode=constants.ParseMode.MARKDOWN)
+    await update.message.reply_text(response, parse_mode=constants.ParseMode.MARKDOWN_V2)
 
 async def rules_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handles the 'Rules' button."""
-    await update.message.reply_text(db.get_text('rules'), parse_mode=constants.ParseMode.MARKDOWN)
+    await update.message.reply_text(db.get_text('rules'), parse_mode=constants.ParseMode.MARKDOWN_V2)
 
 # --- Full Submission Conversation ---
 async def submission_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     context.user_data['experience'] = {}
-    fields = db.get_majors_by_field(1) # Assuming field with id 1 is the default
+    fields, _ = db.get_all_items(Field, page=1, per_page=100)
     await update.message.reply_text(db.get_text('submission_start'), reply_markup=kb.dynamic_list_keyboard(fields, 'field'))
     return SELECTING_FIELD
 
@@ -154,6 +168,10 @@ async def add_new_professor_receive_name(update: Update, context: ContextTypes.D
     if not prof_name:
         await update.message.reply_text("نام استاد نمی‌تواند خالی باشد. لطفا دوباره تلاش کنید:")
         return ADDING_PROFESSOR
+    if len(prof_name) > 255:
+        await update.message.reply_text("نام استاد بیش از حد طولانی است. لطفا نام کوتاه‌تری وارد کنید:")
+        return ADDING_PROFESSOR
+    
     new_prof = db.add_item(Professor, name=prof_name)
     context.user_data['experience']['professor_id'] = new_prof.id
     await update.message.reply_text(db.get_text('ask_teaching_style'))
@@ -196,14 +214,23 @@ async def get_conclusion_and_finish(update: Update, context: ContextTypes.DEFAUL
     context.user_data['experience']['conclusion'] = update.message.text
     exp_data = context.user_data['experience']
     exp_data['user_id'] = update.effective_user.id
+    
     new_exp = db.add_item(Experience, **exp_data)
     exp = db.get_experience(new_exp.id)
+    
     admin_message = db.get_text('admin_new_experience_notification', exp_id=exp.id) + format_experience(exp)
+    
     for admin in db.get_all_admins():
         try:
-            await context.bot.send_message(chat_id=admin.user_id, text=admin_message, reply_markup=kb.admin_approval_keyboard(exp.id))
+            await context.bot.send_message(
+                chat_id=admin.user_id,
+                text=admin_message,
+                reply_markup=kb.admin_approval_keyboard(exp.id),
+                parse_mode=constants.ParseMode.MARKDOWN_V2
+            )
         except Exception as e:
             logger.error(f"Failed to send notification to admin {admin.user_id}: {e}")
+            
     await update.message.reply_text(db.get_text('submission_success'), reply_markup=kb.main_menu())
     context.user_data.clear()
     return ConversationHandler.END
@@ -246,46 +273,48 @@ async def list_items(update: Update, context: ContextTypes.DEFAULT_TYPE):
         'course': (Course, 'admin_manage_course_header'),
         'admin': (Admin, "👮‍♂️ مدیریت ادمین‌ها")
     }
-    model, header = model_map[prefix]
+    model, header_key = model_map[prefix]
     
-    text = header if prefix == 'admin' else db.get_text(header)
+    text = header_key if prefix == 'admin' else db.get_text(header_key)
     items, total_pages = db.get_all_items(model, page=page)
     reply_markup = kb.admin_manage_item_list(items, prefix, page, total_pages)
     
     await query.edit_message_text(text, reply_markup=reply_markup)
 
-
 # --- Add Handlers ---
 async def add_item_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     query = update.callback_query
-    prefix = query.data.split('_')[1] # e.g., field from "field_add"
-    context.user_data['prefix'] = prefix
-    
-    model_map = {'major': Major, 'course': Course}
+    parts = query.data.split('_')
+    prefix = parts[1] # e.g., field from "field_add_1"
+    page = int(parts[2])
 
-    if prefix in model_map:
+    context.user_data['prefix'] = prefix
+    context.user_data['page'] = page
+    
+    if prefix in ['major', 'course']:
         fields, _ = db.get_all_items(Field, per_page=100)
         await query.answer()
-        await query.edit_message_text(db.get_text('select_parent_field'), reply_markup=kb.parent_field_selection_keyboard(fields, prefix))
+        await query.edit_message_text(db.get_text('select_parent_field'), reply_markup=kb.parent_field_selection_keyboard(fields, prefix, page))
         return SELECTING_PARENT_FIELD
     elif prefix == 'admin':
         await query.answer()
-        await query.edit_message_text("لطفا شناسه عددی (User ID) ادمین جدید را وارد کنید:", reply_markup=kb.back_to_list_keyboard(prefix))
+        await query.edit_message_text("لطفا شناسه عددی (User ID) ادمین جدید را وارد کنید:", reply_markup=kb.back_to_list_keyboard(prefix, page))
         return GETTING_ADMIN_ID
     else: # Simple items like Field, Professor
         await query.answer()
-        await query.edit_message_text(db.get_text('ask_for_new_item_name'), reply_markup=kb.back_to_list_keyboard(prefix))
+        await query.edit_message_text(db.get_text('ask_for_new_item_name'), reply_markup=kb.back_to_list_keyboard(prefix, page))
         return GETTING_NEW_NAME
 
 async def complex_item_select_parent(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     query = update.callback_query
     await query.answer()
-    context.user_data['parent_id'] = int(query.data.split('_')[-1])
+    context.user_data['parent_id'] = int(query.data.split('_')[-2])
     await query.edit_message_text(db.get_text('ask_for_new_item_name'))
     return GETTING_NEW_NAME
 
 async def save_item(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     prefix = context.user_data.pop('prefix')
+    page = context.user_data.pop('page')
     name = update.message.text.strip()
     
     model_map = {'field': Field, 'professor': Professor, 'major': Major, 'course': Course}
@@ -299,13 +328,17 @@ async def save_item(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     db.add_item(model_map[prefix], **kwargs)
     await update.message.reply_text(db.get_text('item_added_successfully'))
 
-    # Reshow list
-    query_data = f"admin_list_{prefix}_1"
-    update.callback_query = Update(update.update_id, callback_query={'data': query_data, 'message': update.message, 'from_user': update.effective_user}).callback_query
-    await list_items(update, context)
+    # Cleanly reshow the list
+    items, total_pages = db.get_all_items(model_map[prefix], page=page)
+    reply_markup = kb.admin_manage_item_list(items, prefix, page, total_pages)
+    header_key = f'admin_manage_{prefix}_header'
+    await update.message.reply_text(db.get_text(header_key), reply_markup=reply_markup)
+    
+    context.user_data.clear()
     return ConversationHandler.END
 
 async def save_admin(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    page = context.user_data.pop('page')
     try:
         user_id = int(update.message.text.strip())
         db.add_item(Admin, user_id=user_id)
@@ -313,18 +346,19 @@ async def save_admin(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     except ValueError:
         await update.message.reply_text("شناسه وارد شده نامعتبر است. لطفا یک عدد وارد کنید.")
     
-    # Reshow list
-    query_data = "admin_list_admin_1"
-    update.callback_query = Update(update.update_id, callback_query={'data': query_data, 'message': update.message, 'from_user': update.effective_user}).callback_query
-    await list_items(update, context)
+    # Cleanly reshow the list
+    items, total_pages = db.get_all_items(Admin, page=page)
+    reply_markup = kb.admin_manage_item_list(items, 'admin', page, total_pages)
+    await update.message.reply_text("👮‍♂️ مدیریت ادمین‌ها", reply_markup=reply_markup)
+    
+    context.user_data.clear()
     return ConversationHandler.END
-
 
 # --- Edit Handlers ---
 async def edit_item_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     query = update.callback_query
     await query.answer()
-    prefix, _, item_id_str = query.data.split('_')
+    prefix, _, item_id_str, page_str = query.data.split('_')
     item_id = int(item_id_str)
     
     model_map = {'field': Field, 'professor': Professor, 'major': Major, 'course': Course}
@@ -332,57 +366,76 @@ async def edit_item_start(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     
     context.user_data['item_id_to_edit'] = item_id
     context.user_data['prefix'] = prefix
+    context.user_data['page'] = int(page_str)
     
-    await query.edit_message_text(db.get_text('ask_for_update_item_name', current_name=item.name), reply_markup=kb.back_to_list_keyboard(prefix))
+    await query.edit_message_text(
+        db.get_text('ask_for_update_item_name', current_name=item.name),
+        reply_markup=kb.back_to_list_keyboard(prefix, int(page_str))
+    )
     return GETTING_UPDATED_NAME
 
 async def save_updated_item_name(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     prefix = context.user_data.pop('prefix')
     item_id = context.user_data.pop('item_id_to_edit')
+    page = context.user_data.pop('page')
     
     model_map = {'field': Field, 'professor': Professor, 'major': Major, 'course': Course}
     db.update_item(model_map[prefix], item_id, name=update.message.text.strip())
     
     await update.message.reply_text(db.get_text('item_updated_successfully'))
     
-    query_data = f"admin_list_{prefix}_1"
-    update.callback_query = Update(update.update_id, callback_query={'data': query_data, 'message': update.message, 'from_user': update.effective_user}).callback_query
-    await list_items(update, context)
+    # Cleanly reshow the list
+    items, total_pages = db.get_all_items(model_map[prefix], page=page)
+    reply_markup = kb.admin_manage_item_list(items, prefix, page, total_pages)
+    header_key = f'admin_manage_{prefix}_header'
+    await update.message.reply_text(db.get_text(header_key), reply_markup=reply_markup)
+    
+    context.user_data.clear()
     return ConversationHandler.END
 
 # --- Delete Handlers ---
 async def delete_item_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    prefix, _, item_id_str = query.data.split('_')
+    prefix, _, item_id_str, page_str = query.data.split('_')
     item_id = int(item_id_str)
+    page = int(page_str)
     
     model_map = {'field': Field, 'professor': Professor, 'major': Major, 'course': Course, 'admin': Admin}
     item = db.get_item_by_id(model_map[prefix], item_id)
     
+    if not item:
+        await query.edit_message_text("آیتم مورد نظر یافت نشد.", reply_markup=kb.back_to_list_keyboard(prefix, page))
+        return
+
     item_name = item.name if hasattr(item, 'name') else f"Admin ID: {item.user_id}"
-    await query.edit_message_text(db.get_text('confirm_delete', item_name=item_name), reply_markup=kb.confirm_delete_keyboard(prefix, item_id), parse_mode=constants.ParseMode.MARKDOWN)
+    await query.edit_message_text(
+        db.get_text('confirm_delete', item_name=escape_markdown(item_name, version=2)),
+        reply_markup=kb.confirm_delete_keyboard(prefix, item_id, page),
+        parse_mode=constants.ParseMode.MARKDOWN_V2
+    )
 
 async def delete_item_execute(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    prefix, _, item_id_str = query.data.split('_')
+    prefix, _, item_id_str, page_str = query.data.split('_')
     item_id = int(item_id_str)
+    page = int(page_str)
 
     model_map = {'field': Field, 'professor': Professor, 'major': Major, 'course': Course, 'admin': Admin}
     
-    # Prevent the owner from being deleted
     if prefix == 'admin':
         admin_to_delete = db.get_item_by_id(Admin, item_id)
         if admin_to_delete and admin_to_delete.user_id == config.OWNER_ID:
             await query.answer("شما نمی‌توانید ادمین اصلی را حذف کنید!", show_alert=True)
-            query.data = f"admin_list_{prefix}_1"
+            # Reshow list without deleting
+            query.data = f"admin_list_{prefix}_{page}"
             await list_items(update, context)
             return
 
     db.delete_item(model_map[prefix], item_id)
     await query.answer(db.get_text('item_deleted_successfully'), show_alert=True)
     
-    query.data = f"admin_list_{prefix}_1"
+    query.data = f"admin_list_{prefix}_{page}"
     await list_items(update, context)
 
 # --- Text Management Handlers ---
@@ -395,20 +448,27 @@ async def admin_list_texts(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.edit_message_text(
         text=db.get_text('admin_manage_texts_header'),
         reply_markup=kb.admin_manage_texts_list(texts, page, total_pages),
-        parse_mode=constants.ParseMode.MARKDOWN
+        parse_mode=constants.ParseMode.MARKDOWN_V2
     )
 
 async def edit_text_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     query = update.callback_query
     await query.answer()
-    text_key = query.data.split('text_edit_')[-1]
+    parts = query.data.split('_')
+    text_key = parts[2]
+    page = int(parts[3])
     context.user_data['text_key_to_edit'] = text_key
-    await query.edit_message_text(db.get_text('ask_for_update_text_value', key=text_key), reply_markup=kb.back_to_list_keyboard('texts_1'))
+    context.user_data['page'] = page
+    await query.edit_message_text(
+        db.get_text('ask_for_update_text_value', key=text_key),
+        reply_markup=kb.back_to_list_keyboard('texts', page)
+    )
     return GETTING_UPDATED_TEXT
 
 async def save_updated_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     new_value = update.message.text
     key = context.user_data.pop('text_key_to_edit')
+    page = context.user_data.pop('page')
     
     with db.session_scope() as s:
         text_item = s.query(BotText).filter_by(key=key).first()
@@ -417,15 +477,20 @@ async def save_updated_text(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     
     await update.message.reply_text(db.get_text('item_updated_successfully'))
     
-    query_data = 'admin_list_texts_1'
-    update.callback_query = Update(update.update_id, callback_query={'data': query_data, 'message': update.message, 'from_user': update.effective_user}).callback_query
-    await admin_list_texts(update, context)
+    # Cleanly reshow the list
+    texts, total_pages = db.get_paginated_texts(page=page)
+    await update.message.reply_text(
+        text=db.get_text('admin_manage_texts_header'),
+        reply_markup=kb.admin_manage_texts_list(texts, page, total_pages),
+        parse_mode=constants.ParseMode.MARKDOWN_V2
+    )
+    context.user_data.clear()
     return ConversationHandler.END
 
 # --- General Cancel Handler for Admin Conversations ---
 async def cancel_admin_conversation(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     query = update.callback_query
-    prefix = query.data.split('_')[-2] # admin_list_{prefix}_{page}
+    # Rely on the back button's callback_data to refresh the list
     await list_items(update, context)
     context.user_data.clear()
     return ConversationHandler.END
@@ -446,15 +511,17 @@ async def experience_approval_handler(update: Update, context: ContextTypes.DEFA
 
     if action == "view":
         admin_message = db.get_text('admin_recheck_experience', exp_id=exp.id) + format_experience(exp)
-        await query.edit_message_text(admin_message, reply_markup=kb.admin_approval_keyboard(exp_id))
+        await query.edit_message_text(admin_message, reply_markup=kb.admin_approval_keyboard(exp_id), parse_mode=constants.ParseMode.MARKDOWN_V2)
         return
 
     if action == "approve":
         db.update_experience_status(exp_id, 'approved')
-        await context.bot.send_message(chat_id=config.CHANNEL_ID, text=format_experience(exp), parse_mode=constants.ParseMode.MARKDOWN)
+        # Use MarkdownV2 for consistency
+        await context.bot.send_message(chat_id=config.CHANNEL_ID, text=format_experience(exp), parse_mode=constants.ParseMode.MARKDOWN_V2)
         await query.edit_message_text(db.get_text('admin_approval_success', exp_id=exp_id))
         try:
-            await context.bot.send_message(chat_id=exp.user_id, text=db.get_text('user_approval_notification', course_name=exp.course.name))
+            course_name = escape_markdown(exp.course.name, version=2)
+            await context.bot.send_message(chat_id=exp.user_id, text=db.get_text('user_approval_notification', course_name=course_name), parse_mode=constants.ParseMode.MARKDOWN_V2)
         except Exception as e:
             logger.warning(f"Could not notify user {exp.user_id} about approval: {e}")
 
@@ -467,7 +534,13 @@ async def experience_approval_handler(update: Update, context: ContextTypes.DEFA
         db.update_experience_status(exp_id, 'rejected')
         await query.edit_message_text(db.get_text('admin_rejection_success', exp_id=exp_id, reason=reason_text))
         try:
-            await context.bot.send_message(chat_id=exp.user_id, text=db.get_text('user_rejection_notification', course_name=exp.course.name, reason=reason_text))
+            course_name = escape_markdown(exp.course.name, version=2)
+            reason_text_escaped = escape_markdown(reason_text, version=2)
+            await context.bot.send_message(
+                chat_id=exp.user_id,
+                text=db.get_text('user_rejection_notification', course_name=course_name, reason=reason_text_escaped),
+                parse_mode=constants.ParseMode.MARKDOWN_V2
+            )
         except Exception as e:
             logger.warning(f"Could not notify user {exp.user_id} about rejection: {e}")
 
@@ -499,30 +572,30 @@ def main():
     )
 
     add_item_handler = ConversationHandler(
-        entry_points=[CallbackQueryHandler(add_item_start, pattern="^(field|major|course|professor)_add$")],
+        entry_points=[CallbackQueryHandler(add_item_start, pattern=r"^(field|major|course|professor)_add_\d+$")],
         states={
-            SELECTING_PARENT_FIELD: [CallbackQueryHandler(complex_item_select_parent, pattern="^(major|course)_selectfield_")],
+            SELECTING_PARENT_FIELD: [CallbackQueryHandler(complex_item_select_parent, pattern=r"^(major|course)_selectfield_")],
             GETTING_NEW_NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, save_item)],
         },
-        fallbacks=[CallbackQueryHandler(cancel_admin_conversation, pattern="^admin_list_")]
+        fallbacks=[CallbackQueryHandler(cancel_admin_conversation, pattern=r"^admin_list_")]
     )
 
     add_admin_handler = ConversationHandler(
-        entry_points=[CallbackQueryHandler(add_item_start, pattern="^admin_add$")],
+        entry_points=[CallbackQueryHandler(add_item_start, pattern=r"^admin_add_\d+$")],
         states={GETTING_ADMIN_ID: [MessageHandler(filters.TEXT & ~filters.COMMAND, save_admin)]},
-        fallbacks=[CallbackQueryHandler(cancel_admin_conversation, pattern="^admin_list_")]
+        fallbacks=[CallbackQueryHandler(cancel_admin_conversation, pattern=r"^admin_list_")]
     )
 
     edit_item_handler = ConversationHandler(
-        entry_points=[CallbackQueryHandler(edit_item_start, pattern="^(field|major|course|professor)_edit_")],
+        entry_points=[CallbackQueryHandler(edit_item_start, pattern=r"^(field|major|course|professor)_edit_\d+_\d+$")],
         states={GETTING_UPDATED_NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, save_updated_item_name)]},
-        fallbacks=[CallbackQueryHandler(cancel_admin_conversation, pattern="^admin_list_")]
+        fallbacks=[CallbackQueryHandler(cancel_admin_conversation, pattern=r"^admin_list_")]
     )
 
     edit_text_handler = ConversationHandler(
-        entry_points=[CallbackQueryHandler(edit_text_start, pattern="^text_edit_")],
+        entry_points=[CallbackQueryHandler(edit_text_start, pattern=r"^text_edit_.*_\d+$")],
         states={GETTING_UPDATED_TEXT: [MessageHandler(filters.TEXT & ~filters.COMMAND, save_updated_text)]},
-        fallbacks=[CallbackQueryHandler(cancel_admin_conversation, pattern="^admin_list_texts_")]
+        fallbacks=[CallbackQueryHandler(cancel_admin_conversation, pattern=r"^admin_list_texts_")]
     )
 
     # --- Registering All Handlers ---
@@ -538,10 +611,10 @@ def main():
 
     # CallbackQuery Handlers for Admin Panel
     app.add_handler(CallbackQueryHandler(admin_main_panel_callback, pattern="^admin_main_panel$"))
-    app.add_handler(CallbackQueryHandler(list_items, pattern="^admin_list_"))
-    app.add_handler(CallbackQueryHandler(admin_list_texts, pattern="^admin_list_texts_"))
-    app.add_handler(CallbackQueryHandler(delete_item_confirm, pattern="^.*_delete_.*$"))
-    app.add_handler(CallbackQueryHandler(delete_item_execute, pattern="^.*_confirmdelete_.*$"))
+    app.add_handler(CallbackQueryHandler(list_items, pattern=r"^admin_list_"))
+    app.add_handler(CallbackQueryHandler(admin_list_texts, pattern=r"^admin_list_texts_"))
+    app.add_handler(CallbackQueryHandler(delete_item_confirm, pattern=r"^.*_delete_.*$"))
+    app.add_handler(CallbackQueryHandler(delete_item_execute, pattern=r"^.*_confirmdelete_.*$"))
     app.add_handler(CallbackQueryHandler(experience_approval_handler, pattern="^exp_"))
 
     # Message Handlers for Main Menu (using Regex on texts fetched from DB)

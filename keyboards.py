@@ -18,7 +18,6 @@ def admin_panel_main():
         [InlineKeyboardButton(db.get_text('btn_admin_manage_professors'), callback_data="admin_list_professor_1")],
         [InlineKeyboardButton(db.get_text('btn_admin_manage_courses'), callback_data="admin_list_course_1")],
         [InlineKeyboardButton(db.get_text('btn_admin_manage_texts'), callback_data="admin_list_texts_1")],
-        # دکمه جدید برای مدیریت ادمین‌ها
         [InlineKeyboardButton("👮‍♂️ مدیریت ادمین‌ها", callback_data="admin_list_admin_1")]
     ]
     return InlineKeyboardMarkup(keyboard)
@@ -29,15 +28,17 @@ def admin_manage_item_list(items, prefix, current_page, total_pages):
     """
     keyboard = []
     for item in items:
-        # برای مدل Admin، چون فیلد name ندارد، از user_id استفاده می‌کنیم
         name = item.name if hasattr(item, 'name') else f"Admin ID: {item.user_id}"
+        # Pass current_page to the delete callback
+        delete_callback = f"{prefix}_delete_{item.id}_{current_page}"
         row = [
             InlineKeyboardButton(name, callback_data=f"none"),
-            InlineKeyboardButton(db.get_text('btn_delete'), callback_data=f"{prefix}_delete_{item.id}")
+            InlineKeyboardButton(db.get_text('btn_delete'), callback_data=delete_callback)
         ]
-        # دکمه ویرایش برای ادمین‌ها وجود ندارد، چون فقط user_id دارند
         if hasattr(item, 'name'):
-            row.insert(1, InlineKeyboardButton(db.get_text('btn_edit'), callback_data=f"{prefix}_edit_{item.id}"))
+            # Pass current_page to the edit callback as well
+            edit_callback = f"{prefix}_edit_{item.id}_{current_page}"
+            row.insert(1, InlineKeyboardButton(db.get_text('btn_edit'), callback_data=edit_callback))
         keyboard.append(row)
 
     pagination_row = []
@@ -49,9 +50,8 @@ def admin_manage_item_list(items, prefix, current_page, total_pages):
     if pagination_row:
         keyboard.append(pagination_row)
 
-    # برای مدل Admin، دکمه افزودن متن متفاوتی دارد
     add_button_text = db.get_text('btn_add_new') if prefix != 'admin' else '➕ افزودن ادمین جدید'
-    keyboard.append([InlineKeyboardButton(add_button_text, callback_data=f"{prefix}_add")])
+    keyboard.append([InlineKeyboardButton(add_button_text, callback_data=f"{prefix}_add_{current_page}")])
     keyboard.append([InlineKeyboardButton(db.get_text('btn_back_to_panel'), callback_data="admin_main_panel")])
 
     return InlineKeyboardMarkup(keyboard)
@@ -61,8 +61,7 @@ def admin_manage_texts_list(texts, current_page, total_pages):
     """Creates a paginated list of bot texts for editing."""
     keyboard = []
     for text_item in texts:
-        # نمایش کلید متن به عنوان دکمه برای ویرایش
-        keyboard.append([InlineKeyboardButton(f"`{text_item.key}`", callback_data=f"text_edit_{text_item.key}")])
+        keyboard.append([InlineKeyboardButton(f"`{text_item.key}`", callback_data=f"text_edit_{text_item.key}_{current_page}")])
 
     pagination_row = []
     if current_page > 1:
@@ -76,21 +75,21 @@ def admin_manage_texts_list(texts, current_page, total_pages):
     keyboard.append([InlineKeyboardButton(db.get_text('btn_back_to_panel'), callback_data="admin_main_panel")])
     return InlineKeyboardMarkup(keyboard)
 
-def confirm_delete_keyboard(prefix, item_id):
-    """Returns a confirmation keyboard for deleting an item."""
+def confirm_delete_keyboard(prefix, item_id, page):
+    """Returns a confirmation keyboard for deleting an item, preserving the page number."""
     return InlineKeyboardMarkup([[
-        InlineKeyboardButton(db.get_text('btn_confirm_delete'), callback_data=f"{prefix}_confirmdelete_{item_id}"),
-        InlineKeyboardButton(db.get_text('btn_cancel_delete'), callback_data=f"admin_list_{prefix}_1") # بازگشت به صفحه اول لیست
+        InlineKeyboardButton(db.get_text('btn_confirm_delete'), callback_data=f"{prefix}_confirmdelete_{item_id}_{page}"),
+        InlineKeyboardButton(db.get_text('btn_cancel_delete'), callback_data=f"admin_list_{prefix}_{page}")
     ]])
 
 def back_to_list_keyboard(prefix, page=1):
     """Returns a keyboard with a single button to go back to a list."""
     return InlineKeyboardMarkup([[InlineKeyboardButton(db.get_text('btn_back_to_list'), callback_data=f"admin_list_{prefix}_{page}")]])
 
-def parent_field_selection_keyboard(fields, prefix):
+def parent_field_selection_keyboard(fields, prefix, page=1):
     """Returns a keyboard for selecting a parent field (for Majors and Courses)."""
-    keyboard = [[InlineKeyboardButton(f.name, callback_data=f"{prefix}_selectfield_{f.id}")] for f in fields]
-    keyboard.append([InlineKeyboardButton(db.get_text('btn_cancel'), callback_data=f"admin_list_{prefix}_1")])
+    keyboard = [[InlineKeyboardButton(f.name, callback_data=f"{prefix}_selectfield_{f.id}_{page}")] for f in fields]
+    keyboard.append([InlineKeyboardButton(db.get_text('btn_cancel'), callback_data=f"admin_list_{prefix}_{page}")])
     return InlineKeyboardMarkup(keyboard)
 
 def dynamic_list_keyboard(items, prefix, has_add_new=False):

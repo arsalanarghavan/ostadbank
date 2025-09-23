@@ -1,18 +1,36 @@
+# config.py
+
 import os
 from dotenv import load_dotenv
 
 load_dotenv()
 
-BOT_TOKEN = os.getenv("BOT_TOKEN", "YOUR_BOT_TOKEN")
+# --- Critical Configurations ---
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+if not BOT_TOKEN:
+    raise ValueError("ERROR: BOT_TOKEN is not set in environment variables or .env file.")
 
-OWNER_ID = int(os.getenv("OWNER_ID", 123456789))
+OWNER_ID_STR = os.getenv("OWNER_ID")
+if not OWNER_ID_STR:
+    raise ValueError("ERROR: OWNER_ID is not set.")
+OWNER_ID = int(OWNER_ID_STR)
 
-CHANNEL_ID = int(os.getenv("CHANNEL_ID", -1001234567890))
+CHANNEL_ID_STR = os.getenv("CHANNEL_ID")
+if not CHANNEL_ID_STR:
+    raise ValueError("ERROR: CHANNEL_ID is not set.")
+CHANNEL_ID = int(CHANNEL_ID_STR)
 
+
+# --- Database Configurations ---
 DB_USER = os.getenv("DB_USER", "root")
 DB_PASSWORD = os.getenv("DB_PASSWORD", "")
 DB_HOST = os.getenv("DB_HOST", "127.0.0.1")
 DB_PORT = os.getenv("DB_PORT", "3306")
 DB_NAME = os.getenv("DB_NAME", "ostadbank_db")
+
+# Ensure database name is provided for production
+if not os.getenv("DB_NAME"):
+    print("WARNING: DB_NAME is not set, using default 'ostadbank_db'.")
+
 
 DATABASE_URL = f"mysql+pymysql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}?charset=utf8mb4"
