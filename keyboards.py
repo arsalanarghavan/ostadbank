@@ -81,4 +81,13 @@ def admin_approval_keyboard(experience_id):
         InlineKeyboardButton(db.get_text('btn_reject_exp'), callback_data=f"exp_reject_{experience_id}")
     ]])
 
-# ... (rejection_reasons_keyboard can remain the same as its buttons are for internal logic)
+def rejection_reasons_keyboard(experience_id):
+    # This function creates a keyboard with common rejection reasons.
+    # The reasons' texts are fetched from the database, so they are manageable by the admin.
+    keyboard = [
+        [InlineKeyboardButton(db.get_text('btn_reject_reason_1'), callback_data=f"exp_reject_reason_{experience_id}_1")],
+        [InlineKeyboardButton(db.get_text('btn_reject_reason_2'), callback_data=f"exp_reject_reason_{experience_id}_2")],
+        [InlineKeyboardButton(db.get_text('btn_reject_reason_3'), callback_data=f"exp_reject_reason_{experience_id}_3")],
+        [InlineKeyboardButton(db.get_text('btn_back_to_list'), callback_data=f"exp_view_{experience_id}")]
+    ]
+    return InlineKeyboardMarkup(keyboard)

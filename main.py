@@ -11,7 +11,7 @@ from unittest.mock import Mock
 import config
 import database as db
 import keyboards as kb
-from models import Field, Major, Professor, Course, Experience, BotText
+from models import Field, Major, Professor, Course, Experience, BotText, Admin
 
 # --- Logging Configuration ---
 logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO)
@@ -37,56 +37,53 @@ async def check_admin(update: Update, context: ContextTypes.DEFAULT_TYPE) -> boo
 
 def format_experience(exp: Experience) -> str:
     tags = f"#{exp.field.name.replace(' ', '_')} #{exp.major.name.replace(' ', '_')} #{exp.professor.name.replace(' ', '_')} #{exp.course.name.replace(' ', '_')}"
-    return f"""🔖 رشته: {exp.field.name} ({exp.major.name})
+    
+    attendance_text = db.get_text('exp_format_attendance_yes') if exp.attendance_required else db.get_text('exp_format_attendance_no')
+    
+    return f"""{db.get_text('exp_format_field')}: {exp.field.name} ({exp.major.name})
 
-👨🏻‍🏫 استاد: {exp.professor.name}
+{db.get_text('exp_format_professor')}: {exp.professor.name}
 
-📝 درس: {exp.course.name}
+{db.get_text('exp_format_course')}: {exp.course.name}
 
-✏️ نوع تدریس:
+{db.get_text('exp_format_teaching')}:
 {exp.teaching_style}
 
-📚 جزوه:
+{db.get_text('exp_format_notes')}:
 {exp.notes}
 
-💻 پروژه:
+{db.get_text('exp_format_project')}:
 {exp.project}
 
-❌ حضور و غیاب: {'دارد' if exp.attendance_required else 'ندارد'}
+{db.get_text('exp_format_attendance')}: {attendance_text}
 {exp.attendance_details}
 
-⭕️ امتحان:
+{db.get_text('exp_format_exam')}:
 {exp.exam}
 
-⚠️ نتیجه گیری:
+{db.get_text('exp_format_conclusion')}:
 {exp.conclusion}
 
-➖➖➖➖➖➖➖➖➖➖
-❗️دوستانی که مایل به معرفی استاد هستن، می‌تونند با ما در ارتباط باشن تا استادشون رو معرفی کنیم و به بقیه کمک بشه برای انتخاب واحد بهتر.
-
-#همیار_هم_باشیم
-
-آدرس کانال:
-🆔 @Shamsi_OstadBank
-ثبت تجربه شما:
-🆔 @Shamsi_OstadBank_Bot
-➖➖➖➖➖➖➖➖➖➖
-♊️ تگ‌ها: {tags}"""
+{db.get_text('exp_format_footer')}
+{db.get_text('exp_format_tags')}: {tags}"""
 
 async def reshow_list(update: Update, context: ContextTypes.DEFAULT_TYPE, model, prefix):
     header_key = f'admin_manage_{prefix}_header'
+    # Simulating a callback_query to reuse the list_items function
     mock_query = Mock(
         message=update.message,
         data=f'admin_list_{prefix}',
         from_user=update.effective_user,
         answer=lambda: None,
-        edit_message_text=update.message.reply_text
+        # A bit of a hack to make it reply with a new message instead of editing
+        edit_message_text=update.message.reply_text 
     )
     mock_update = Mock(callback_query=mock_query, effective_user=update.effective_user)
     items = db.get_all_items(model)
     text = db.get_text(header_key)
     reply_markup = kb.admin_manage_item_list(items, prefix=prefix)
-    await mock_query.edit_message_text(text, reply_markup=reply_markup)
+    # Since we use reply_text, it will send a new message
+    await update.message.reply_text(text, reply_markup=reply_markup)
 
 
 # --- User Commands & Main Menu ---
@@ -99,12 +96,20 @@ async def my_experiences_command(update: Update, context: ContextTypes.DEFAULT_T
     if not exps:
         await update.message.reply_text(db.get_text('my_experiences_empty'))
         return
-    response = "📜 **تجربه‌های ثبت شده شما:**\n\n"
+    response = db.get_text('my_experiences_header')
+    
+    status_map = {
+        'pending': db.get_text('status_pending'),
+        'approved': db.get_text('status_approved'),
+        'rejected': db.get_text('status_rejected')
+    }
+
     for exp in exps:
-        status_emoji = {'pending': '⏳', 'approved': '✅', 'rejected': '❌'}.get(exp.status, '❓')
         exp_course = db.get_item_by_id(Course, exp.course_id)
         exp_prof = db.get_item_by_id(Professor, exp.professor_id)
-        response += f"{status_emoji} **{exp_course.name}** - **{exp_prof.name}** (وضعیت: {exp.status})\n"
+        status_text = status_map.get(exp.status, exp.status)
+        response += f"**{exp_course.name}** - **{exp_prof.name}** ({status_text})\n"
+        
     await update.message.reply_text(response, parse_mode=constants.ParseMode.MARKDOWN)
 
 async def rules_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -205,7 +210,7 @@ async def get_conclusion_and_finish(update: Update, context: ContextTypes.DEFAUL
     exp_data['user_id'] = update.effective_user.id
     new_exp = db.add_item(Experience, **exp_data)
     exp = db.get_experience(new_exp.id)
-    admin_message = f"یک تجربه جدید برای بررسی ثبت شد (ID: {exp.id}):\n\n" + format_experience(exp)
+    admin_message = db.get_text('admin_new_experience_notification', exp_id=exp.id) + format_experience(exp)
     for admin in db.get_all_items(Admin):
         try:
             await context.bot.send_message(chat_id=admin.user_id, text=admin_message, reply_markup=kb.admin_approval_keyboard(exp.id))
@@ -220,6 +225,8 @@ async def cancel_submission(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     await query.answer()
     await query.edit_message_text(db.get_text('submission_cancel'))
     context.user_data.clear()
+    # Need to send a follow-up message to show the main menu again
+    await context.bot.send_message(chat_id=update.effective_chat.id, text=db.get_text('welcome'), reply_markup=kb.main_menu())
     return ConversationHandler.END
 
 # --- Full Admin Panel ---
@@ -321,7 +328,11 @@ async def delete_item_execute(update: Update, context: ContextTypes.DEFAULT_TYPE
     item_id = int(item_id_str)
     model = {'field': Field, 'professor': Professor, 'major': Major, 'course': Course}[prefix]
     db.delete_item(model, item_id)
-    await list_items(update, context, model, prefix)
+    # Re-show the list after deletion
+    mock_query = Mock(message=query.message, data=f'admin_list_{prefix}', from_user=update.effective_user, answer=lambda:None, edit_message_text=query.edit_message_text)
+    mock_update = Mock(callback_query=mock_query, effective_user=update.effective_user)
+    await list_items(mock_update, context, model, prefix)
+
 
 # --- Text Management Handlers ---
 async def admin_list_texts(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -347,24 +358,35 @@ async def edit_text_start(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 async def save_updated_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     new_value = update.message.text
     key = context.user_data.pop('text_key_to_edit')
-    db.update_item(BotText, key, value=new_value)
+    # The primary key of BotText is 'key', so we use that instead of an 'id'
+    with db.session_scope() as s:
+        text_item = s.query(BotText).filter_by(key=key).first()
+        if text_item:
+            text_item.value = new_value
+    
     await update.message.reply_text(db.get_text('item_updated_successfully'))
+    
+    # Simulate a callback to show the text list again
     mock_query = Mock(message=update.message, data='admin_list_texts_1', from_user=update.effective_user, answer=lambda:None, edit_message_text=update.message.reply_text)
     mock_update = Mock(callback_query=mock_query, effective_user=update.effective_user)
     await admin_list_texts(mock_update, context)
     return ConversationHandler.END
 
+
 # --- General Cancel Handler for Admin Conversations ---
 async def cancel_admin_conversation(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     query = update.callback_query
+    await query.answer()
     prefix = query.data.split('_')[-1]
-    model_map = {'field': Field, 'professor': Professor, 'major': Major, 'course': Course, 'texts_1': BotText}
-    if prefix in model_map and prefix != 'texts_1':
+    model_map = {'field': Field, 'professor': Professor, 'major': Major, 'course': Course}
+
+    if prefix in model_map:
         await list_items(update, context, model_map[prefix], prefix)
-    elif prefix == 'texts_1':
+    elif 'texts' in prefix: # Handles texts_1, texts_2 etc.
         await admin_list_texts(update, context)
     else:
         await admin_main_panel_callback(update, context)
+    context.user_data.clear()
     return ConversationHandler.END
 
 
@@ -375,39 +397,39 @@ async def experience_approval_handler(update: Update, context: ContextTypes.DEFA
     await query.answer()
     data = query.data.split('_')
     action = data[1]
+    exp_id = int(data[2])
 
     if action == "view":
-        exp_id = int(data[2])
         exp = db.get_experience(exp_id)
-        admin_message = f"بررسی مجدد تجربه ID: {exp.id}\n\n" + format_experience(exp)
+        admin_message = db.get_text('admin_recheck_experience', exp_id=exp.id) + format_experience(exp)
         await query.edit_message_text(admin_message, reply_markup=kb.admin_approval_keyboard(exp_id))
         return
 
-    exp_id = int(data[2])
     if action == "approve":
         db.update_experience_status(exp_id, 'approved')
         exp = db.get_experience(exp_id)
         await context.bot.send_message(chat_id=config.CHANNEL_ID, text=format_experience(exp), parse_mode=constants.ParseMode.MARKDOWN)
-        await query.edit_message_text(f"✅ تجربه با ID {exp_id} تایید و در کانال منتشر شد.")
+        await query.edit_message_text(db.get_text('admin_approval_success', exp_id=exp_id))
         try:
             exp_course = db.get_item_by_id(Course, exp.course_id)
-            await context.bot.send_message(chat_id=exp.user_id, text=f"✅ تجربه شما برای درس '{exp_course.name}' تایید شد!")
+            await context.bot.send_message(chat_id=exp.user_id, text=db.get_text('user_approval_notification', course_name=exp_course.name))
         except Exception as e:
             logger.warning(f"Could not notify user {exp.user_id}: {e}")
+
     elif action == "reject":
-        if len(data) > 3 and data[2] == "reason":
-            reason_key = data[4]
-            reason_text = db.get_text(f'btn_reject_reason_{reason_key}')
-            db.update_experience_status(exp_id, 'rejected')
-            await query.edit_message_text(f"❌ تجربه با ID {exp_id} به دلیل «{reason_text}» رد شد.")
-            exp = db.get_experience(exp_id)
-            try:
-                exp_course = db.get_item_by_id(Course, exp.course_id)
-                await context.bot.send_message(chat_id=exp.user_id, text=f"❌ متاسفانه تجربه شما برای درس '{exp_course.name}' به دلیل «{reason_text}» رد شد.")
-            except Exception as e:
-                logger.warning(f"Could not notify user {exp.user_id}: {e}")
-        else:
-            await query.edit_message_text(db.get_text('rejection_reason_prompt'), reply_markup=kb.rejection_reasons_keyboard(exp_id))
+        await query.edit_message_text(db.get_text('rejection_reason_prompt'), reply_markup=kb.rejection_reasons_keyboard(exp_id))
+    
+    elif action == "reason":
+        reason_key_num = data[3]
+        reason_text = db.get_text(f'btn_reject_reason_{reason_key_num}')
+        db.update_experience_status(exp_id, 'rejected')
+        await query.edit_message_text(db.get_text('admin_rejection_success', exp_id=exp_id, reason=reason_text))
+        exp = db.get_experience(exp_id)
+        try:
+            exp_course = db.get_item_by_id(Course, exp.course_id)
+            await context.bot.send_message(chat_id=exp.user_id, text=db.get_text('user_rejection_notification', course_name=exp_course.name, reason=reason_text))
+        except Exception as e:
+            logger.warning(f"Could not notify user {exp.user_id}: {e}")
 
 # --- Main Application ---
 def main():
@@ -464,7 +486,7 @@ def main():
     edit_text_handler = ConversationHandler(
         entry_points=[CallbackQueryHandler(edit_text_start, pattern="^text_edit_")],
         states={GETTING_UPDATED_TEXT: [MessageHandler(filters.TEXT & ~filters.COMMAND, save_updated_text)]},
-        fallbacks=[CallbackQueryHandler(admin_main_panel_callback, pattern="^admin_main_panel$")]
+        fallbacks=[CallbackQueryHandler(cancel_admin_conversation, pattern="^admin_list_texts_")]
     )
 
     # --- Registering All Handlers ---
