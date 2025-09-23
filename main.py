@@ -424,7 +424,7 @@ async def show_stats_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
     await query.edit_message_text(
         db.get_text('stats_message', **stats),
         parse_mode=constants.ParseMode.MARKDOWN_V2,
-        reply_markup=kb.back_to_list_keyboard("main_panel")
+        reply_markup=kb.back_to_list_keyboard("main_panel", is_main_panel=True) # Corrected
     )
 
 async def broadcast_start_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> States:
@@ -540,17 +540,26 @@ async def admin_list_items_callback(update: Update, context: ContextTypes.DEFAUL
     prefix = parts[2]
     page = int(parts[3])
     
-    model = MODEL_MAP[prefix]
-    
-    if model == BotText:
+    # Handle 'texts' prefix specifically
+    if prefix == 'texts':
+        model = MODEL_MAP['text']
         items, total_pages = db.get_paginated_texts(page=page)
         keyboard = kb.admin_manage_texts_list(items, page, total_pages)
-    else:
-        items, total_pages = db.get_all_items(model, page=page)
-        keyboard = kb.admin_manage_item_list(items, prefix, page, total_pages)
+        header_key = 'admin_manage_texts_header'
+        await query.edit_message_text(db.get_text(header_key, default=f"مدیریت {PREFIX_MAP['text']}"), reply_markup=keyboard)
+        return
+
+    model = MODEL_MAP.get(prefix)
+    if not model:
+        logger.error(f"Invalid prefix '{prefix}' in admin_list_items_callback")
+        return
+
+    items, total_pages = db.get_all_items(model, page=page)
+    keyboard = kb.admin_manage_item_list(items, prefix, page, total_pages)
         
     header_key = f'admin_manage_{prefix}_header'
     await query.edit_message_text(db.get_text(header_key, default=f"مدیریت {PREFIX_MAP[prefix]}"), reply_markup=keyboard)
+
 
 async def item_delete_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await check_admin(update, context): return
@@ -599,7 +608,7 @@ async def item_add_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     
     parts = query.data.split('_')
     prefix = parts[0]
-    page = int(parts[1])
+    page = int(parts[2]) # Corrected index
     
     context.user_data['prefix'] = prefix
     context.user_data['page'] = page

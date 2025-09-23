@@ -52,8 +52,8 @@ CHECK_MEMBERSHIP = r"^check_membership$"
 
 # Admin panel patterns
 ADMIN_MAIN_PANEL = r"^admin_main_panel$"
-ADMIN_LIST_ITEMS = r"^admin_list_"
-ADMIN_LIST_TEXTS = r"^admin_list_texts_"
+ADMIN_LIST_ITEMS = r"^admin_list_(field|major|course|professor|admin)_\d+$" # Corrected pattern
+ADMIN_LIST_TEXTS = r"^admin_list_texts_\d+$"
 ADMIN_MANAGE_CHANNELS = r"^admin_manage_channels$"
 ADMIN_ADD_CHANNEL = r"^admin_add_channel$"
 ADMIN_DELETE_CHANNEL = r"^admin_delete_channel_"
@@ -62,7 +62,7 @@ ADMIN_TOGGLE_FORCE_SUB = r"^admin_toggle_force_sub$"
 
 # CRUD patterns (Create, Read, Update, Delete)
 ITEM_ADD = r"^(field|major|course|professor)_add_\d+$"
-ADMIN_ADD = r"^admin_add_\d+$"
+ADMIN_ADD = r"^(admin)_add_\d+$" # Corrected pattern
 ITEM_EDIT = r"^(field|major|course|professor)_edit_\d+_\d+$"
 TEXT_EDIT = r"^text_edit_.*_\d+$"
 ITEM_DELETE = r"^.*_delete_.*$"

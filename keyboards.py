@@ -86,8 +86,10 @@ def confirm_delete_keyboard(prefix, item_id, page):
         InlineKeyboardButton(db.get_text('btn_cancel_delete'), callback_data=f"admin_list_{prefix}_{page}")
     ]])
 
-def back_to_list_keyboard(prefix, page=1):
-    """Returns a keyboard with a single button to go back to a list."""
+def back_to_list_keyboard(prefix, page=1, is_main_panel=False):
+    """Returns a keyboard with a single button to go back to a list or the main panel."""
+    if is_main_panel:
+        return InlineKeyboardMarkup([[InlineKeyboardButton(db.get_text('btn_back_to_panel'), callback_data="admin_main_panel")]])
     return InlineKeyboardMarkup([[InlineKeyboardButton(db.get_text('btn_back_to_list'), callback_data=f"admin_list_{prefix}_{page}")]])
 
 def parent_field_selection_keyboard(fields, prefix, page=1):
