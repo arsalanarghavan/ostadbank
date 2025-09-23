@@ -2,6 +2,7 @@
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup
 import database as db
+from models import RequiredChannel
 
 def main_menu():
     """Returns the main menu keyboard for regular users."""
@@ -13,6 +14,10 @@ def main_menu():
 def admin_panel_main():
     """Returns the main keyboard for the admin panel."""
     keyboard = [
+        [InlineKeyboardButton("📊 آمار ربات", callback_data="admin_stats")],
+        [InlineKeyboardButton("📢 ارسال پیام همگانی", callback_data="admin_broadcast")],
+        [InlineKeyboardButton("👤 ارسال پیام به کاربر", callback_data="admin_single_message")],
+        [InlineKeyboardButton("🔗 مدیریت کانال‌ها", callback_data="admin_manage_channels")],
         [InlineKeyboardButton(db.get_text('btn_admin_manage_fields'), callback_data="admin_list_field_1")],
         [InlineKeyboardButton(db.get_text('btn_admin_manage_majors'), callback_data="admin_list_major_1")],
         [InlineKeyboardButton(db.get_text('btn_admin_manage_professors'), callback_data="admin_list_professor_1")],
@@ -55,7 +60,6 @@ def admin_manage_item_list(items, prefix, current_page, total_pages):
     keyboard.append([InlineKeyboardButton(db.get_text('btn_back_to_panel'), callback_data="admin_main_panel")])
 
     return InlineKeyboardMarkup(keyboard)
-
 
 def admin_manage_texts_list(texts, current_page, total_pages):
     """Creates a paginated list of bot texts for editing."""
@@ -109,12 +113,22 @@ def attendance_keyboard():
         InlineKeyboardButton(db.get_text('btn_attendance_no'), callback_data="attendance_no")
     ], [InlineKeyboardButton(db.get_text('btn_cancel'), callback_data="cancel_submission")]])
 
-def admin_approval_keyboard(experience_id):
-    """Returns Approve/Reject keyboard for admins to review an experience."""
-    return InlineKeyboardMarkup([[
-        InlineKeyboardButton(db.get_text('btn_approve_exp'), callback_data=f"exp_approve_{experience_id}"),
-        InlineKeyboardButton(db.get_text('btn_reject_exp'), callback_data=f"exp_reject_{experience_id}")
-    ]])
+def admin_approval_keyboard(experience_id, user):
+    """Returns Approve/Reject keyboard with user info."""
+    keyboard = [
+        [
+            InlineKeyboardButton(db.get_text('btn_approve_exp'), callback_data=f"exp_approve_{experience_id}"),
+            InlineKeyboardButton(db.get_text('btn_reject_exp'), callback_data=f"exp_reject_{experience_id}")
+        ],
+        [
+            InlineKeyboardButton(f"👤 {user.first_name}", url=f"tg://user?id={user.id}"),
+            InlineKeyboardButton(f"ID: {user.id}", url=f"tg://user?id={user.id}")
+        ]
+    ]
+    if user.username:
+        keyboard.append([InlineKeyboardButton(f"@{user.username}", url=f"https://t.me/{user.username}")])
+    
+    return InlineKeyboardMarkup(keyboard)
 
 def rejection_reasons_keyboard(experience_id):
     """Returns a keyboard with common rejection reasons for admins."""
@@ -124,4 +138,35 @@ def rejection_reasons_keyboard(experience_id):
         [InlineKeyboardButton(db.get_text('btn_reject_reason_3'), callback_data=f"exp_reason_{experience_id}_3")],
         [InlineKeyboardButton(db.get_text('btn_back_to_list'), callback_data=f"exp_view_{experience_id}")]
     ]
+    return InlineKeyboardMarkup(keyboard)
+
+def join_channel_keyboard():
+    """Returns a keyboard with links to required channels."""
+    channels = db.get_all_required_channels()
+    keyboard = []
+    for channel in channels:
+        keyboard.append([InlineKeyboardButton(f"عضویت در کانال", url=channel.channel_link)])
+    keyboard.append([InlineKeyboardButton(db.get_text('btn_i_am_member'), callback_data="check_membership")])
+    return InlineKeyboardMarkup(keyboard)
+
+def admin_manage_channels_keyboard():
+    """Returns a keyboard for managing required channels."""
+    channels = db.get_all_required_channels()
+    is_forced = db.get_setting('force_subscribe', 'false') == 'true'
+    
+    keyboard = []
+    for channel in channels:
+        # Note: The channel_id stored might start with '@' or be a numeric ID
+        # For simplicity, we show the link and a delete button
+        keyboard.append([
+            InlineKeyboardButton(channel.channel_link, url=channel.channel_link),
+            InlineKeyboardButton("🗑️ حذف", callback_data=f"admin_delete_channel_{channel.id}")
+        ])
+    
+    keyboard.append([InlineKeyboardButton("➕ افزودن کانال جدید", callback_data="admin_add_channel")])
+    
+    toggle_text = "✅ غیرفعال‌سازی عضویت اجباری" if is_forced else "☑️ فعال‌سازی عضویت اجباری"
+    keyboard.append([InlineKeyboardButton(toggle_text, callback_data="admin_toggle_force_sub")])
+    
+    keyboard.append([InlineKeyboardButton(db.get_text('btn_back_to_panel'), callback_data="admin_main_panel")])
     return InlineKeyboardMarkup(keyboard)

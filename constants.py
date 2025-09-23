@@ -29,6 +29,14 @@ class States(Enum):
     SELECTING_PARENT_FIELD = auto()
     GETTING_UPDATED_TEXT = auto()
     GETTING_ADMIN_ID = auto()
+    
+    # New Admin Features
+    GETTING_BROADCAST_MESSAGE = auto()
+    GETTING_SINGLE_USER_ID = auto()
+    GETTING_SINGLE_MESSAGE = auto()
+    GETTING_CHANNEL_ID_TO_ADD = auto()
+    GETTING_CHANNEL_LINK_TO_ADD = auto()
+
 
 # --- Callback Data Patterns ---
 # User flow patterns
@@ -39,11 +47,18 @@ PROFESSOR_SELECT = r"^professor_select_"
 PROFESSOR_ADD_NEW = r"^professor_add_new$"
 ATTENDANCE_CHOICE = r"^attendance_"
 CANCEL_SUBMISSION = r"^cancel_submission$"
+CHECK_MEMBERSHIP = r"^check_membership$"
+
 
 # Admin panel patterns
 ADMIN_MAIN_PANEL = r"^admin_main_panel$"
 ADMIN_LIST_ITEMS = r"^admin_list_"
 ADMIN_LIST_TEXTS = r"^admin_list_texts_"
+ADMIN_MANAGE_CHANNELS = r"^admin_manage_channels$"
+ADMIN_ADD_CHANNEL = r"^admin_add_channel$"
+ADMIN_DELETE_CHANNEL = r"^admin_delete_channel_"
+ADMIN_TOGGLE_FORCE_SUB = r"^admin_toggle_force_sub$"
+
 
 # CRUD patterns (Create, Read, Update, Delete)
 ITEM_ADD = r"^(field|major|course|professor)_add_\d+$"

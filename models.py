@@ -99,6 +99,18 @@ class Experience(Base):
     professor = relationship("Professor")
     course = relationship("Course")
 
+class RequiredChannel(Base):
+    __tablename__ = 'required_channels'
+    id = Column(Integer, primary_key=True)
+    channel_id = Column(String(255), unique=True, nullable=False)
+    channel_link = Column(String(255), nullable=False)
+
+class Setting(Base):
+    __tablename__ = 'settings'
+    id = Column(Integer, primary_key=True)
+    key = Column(String(255), unique=True, nullable=False)
+    value = Column(String(255), nullable=False)
+
 # --- Database Engine Setup ---
 engine = create_engine(DATABASE_URL, echo=False, connect_args={'charset': 'utf8mb4'})
 

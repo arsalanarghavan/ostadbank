@@ -4,7 +4,8 @@ from sqlalchemy.orm import sessionmaker, joinedload
 from contextlib import contextmanager
 import math
 from models import (engine, create_tables, User, Admin, BotText, Field,
-                    Major, Professor, Course, Experience, ExperienceStatus)
+                    Major, Professor, Course, Experience, ExperienceStatus,
+                    RequiredChannel, Setting) # Add new models
 import config
 
 Session = sessionmaker(bind=engine)
@@ -29,9 +30,12 @@ def initialize_database():
     with session_scope() as session:
         if not session.query(Admin).filter_by(user_id=config.OWNER_ID).first():
             session.add(Admin(user_id=config.OWNER_ID))
+
+        if not session.query(Setting).filter_by(key='force_subscribe').first():
+            session.add(Setting(key='force_subscribe', value='false'))
         
         default_texts = {
-            'welcome': '🤖 به ربات بانک اساتید خوش آمدید!',
+            'welcome': '🤖 سلام! به ربات بانک اساتید خوش آمدید. با این ربات می‌توانید تجربه خود را از اساتید مختلف ثبت کنید و به دیگران در انتخاب واحد کمک کنید. برای شروع، یکی از گزینه‌های زیر را انتخاب کنید.',
             'rules': '📜 **قوانین و سوالات متداول:**\n\n۱. لطفا در بیان تجربیات خود صادق باشید.\n۲. از به کار بردن الفاظ توهین‌آمیز خودداری کنید.',
             'my_experiences_empty': 'شما هنوز تجربه‌ای ثبت نکرده‌اید.',
             'my_experiences_header': '📜 **تجربه‌های ثبت شده شما:**\n\n',
@@ -98,6 +102,14 @@ def initialize_database():
             'admin_rejection_success': '❌ تجربه با ID {exp_id} به دلیل «{reason}» رد شد.',
             'user_approval_notification': "✅ تجربه شما برای درس '{course_name}' تایید شد!",
             'user_rejection_notification': "❌ متاسفانه تجربه شما برای درس '{course_name}' به دلیل «{reason}» رد شد.",
+            'force_subscribe_message': 'کاربر گرامی، برای استفاده از ربات، لطفا ابتدا در کانال‌های زیر عضو شوید و سپس دکمه "عضو شدم" را فشار دهید.',
+            'broadcast_prompt': 'لطفا پیامی که می‌خواهید به تمام کاربران ربات ارسال شود را وارد کنید. می‌توانید از форматирование Markdown استفاده کنید.',
+            'broadcast_success': 'پیام شما برای ارسال به تمام کاربران در صف قرار گرفت. تعداد کل کاربران: {user_count}',
+            'single_message_user_prompt': 'لطفا یوزرنیم (با @) یا آیدی عددی کاربری که می‌خواهید به او پیام ارسال کنید را وارد نمایید.',
+            'single_message_prompt': 'لطفا پیامی که می‌خواهید برای کاربر {target_user} ارسال شود را وارد کنید.',
+            'single_message_success': 'پیام شما با موفقیت برای کاربر {target_user} ارسال شد.',
+            'single_message_fail': 'ارسال پیام به کاربر {target_user} ناموفق بود. خطای دریافتی: {error}',
+            'stats_message': '📊 **آمار ربات:**\n\n👥 تعداد کل کاربران: {total_users}\n✍️ تعداد کل تجربیات ثبت شده: {total_experiences}\n✅ تجربیات تایید شده: {approved_experiences}\n❌ تجربیات رد شده: {rejected_experiences}\n⏳ تجربیات در انتظار تایید: {pending_experiences}',
             'btn_submit_experience': '✍️ ثبت تجربه',
             'btn_my_experiences': '📖 تجربه‌های من',
             'btn_rules': '📜 قوانین',
@@ -124,6 +136,7 @@ def initialize_database():
             'btn_reject_reason_1': 'توهین‌آمیز',
             'btn_reject_reason_2': 'نامفهوم',
             'btn_reject_reason_3': 'اسپم',
+            'btn_i_am_member': 'عضو شدم ✅',
         }
 
         for key, value in default_texts.items():
@@ -161,6 +174,8 @@ def get_all_items(model, page=1, per_page=10):
             query = query.order_by(model.name)
         elif hasattr(model, 'user_id'):
              query = query.order_by(model.user_id)
+        elif hasattr(model, 'channel_id'):
+            query = query.order_by(model.id)
         total_items = query.count()
         total_pages = math.ceil(total_items / per_page) if per_page > 0 else 1
         offset = (page - 1) * per_page
@@ -243,3 +258,40 @@ def get_all_admins():
     """Get all admins from the database."""
     with session_scope() as s:
         return s.query(Admin).all()
+
+def get_all_users():
+    """Get all users from the database."""
+    with session_scope() as s:
+        return s.query(User).all()
+
+def get_statistics():
+    """Get various statistics from the database."""
+    with session_scope() as s:
+        stats = {
+            'total_users': s.query(User).count(),
+            'total_experiences': s.query(Experience).count(),
+            'approved_experiences': s.query(Experience).filter_by(status=ExperienceStatus.APPROVED).count(),
+            'rejected_experiences': s.query(Experience).filter_by(status=ExperienceStatus.REJECTED).count(),
+            'pending_experiences': s.query(Experience).filter_by(status=ExperienceStatus.PENDING).count(),
+        }
+        return stats
+
+def get_setting(key, default=None):
+    """Get a setting value by its key."""
+    with session_scope() as s:
+        setting = s.query(Setting).filter_by(key=key).first()
+        return setting.value if setting else default
+
+def set_setting(key, value):
+    """Set a setting value."""
+    with session_scope() as s:
+        setting = s.query(Setting).filter_by(key=key).first()
+        if setting:
+            setting.value = str(value)
+        else:
+            s.add(Setting(key=key, value=str(value)))
+
+def get_all_required_channels():
+    """Get all required channels from the database."""
+    with session_scope() as s:
+        return s.query(RequiredChannel).all()
