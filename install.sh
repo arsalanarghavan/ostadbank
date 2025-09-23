@@ -16,8 +16,9 @@ apt-get install -y python3 python3-pip python3-venv mariadb-server curl git > /d
 # --- Configure and Secure MariaDB, and create the database automatically ---
 echo "🔐 راه‌اندازی و امن‌سازی خودکار دیتابیس..."
 
-# Generate a strong random password for the database user
-DB_PASSWORD=$(openssl rand -base64 16)
+# Generate a strong, URL-safe random password for the database user
+# Using 'hex' instead of 'base64' to avoid special characters like '@', '/', '+'
+DB_PASSWORD=$(openssl rand -hex 16)
 DB_NAME="ostadbank_db"
 DB_USER="ostadbank_user"
 
