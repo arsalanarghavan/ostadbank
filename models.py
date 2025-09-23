@@ -49,6 +49,7 @@ class Course(Base):
 
 class Experience(Base):
     __tablename__ = 'experiences'
+    # ... (Columns remain the same as the final previous version)
     id = Column(Integer, primary_key=True)
     user_id = Column(Integer, nullable=False)
     field_id = Column(Integer, ForeignKey('fields.id'))
@@ -68,6 +69,7 @@ class Experience(Base):
     major = relationship("Major")
     professor = relationship("Professor")
     course = relationship("Course")
+
 
 engine = create_engine('sqlite:///bot_db.sqlite')
 
