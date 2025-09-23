@@ -1,6 +1,11 @@
 # main.py
 
 import logging
+# +++ Added for Backup Feature +++
+import asyncio
+import datetime
+import os
+# +++ End of Added Section +++
 from telegram import Update, constants, ChatMember
 from telegram.ext import (
     Application, CommandHandler, MessageHandler, ConversationHandler,
@@ -36,6 +41,74 @@ PREFIX_MAP = {
     'field': 'رشته', 'major': 'گرایش', 'professor': 'استاد',
     'course': 'درس', 'admin': 'ادمین', 'text': 'متن'
 }
+
+# +++ Added for Backup Feature +++
+# --- Backup Function ---
+async def backup_database(context: ContextTypes.DEFAULT_TYPE):
+    """Dumps the database and sends it to the backup channel."""
+    logger.info("Starting scheduled database backup...")
+    backup_filename = ""
+    try:
+        # 1. Create a unique filename
+        timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        backup_filename = f"ostadbank_backup_{timestamp}.sql"
+
+        # 2. Construct the mysqldump command
+        # Note: No space between -p and the password is crucial
+        command = (
+            f"mysqldump -h {config.DB_HOST} "
+            f"-P {config.DB_PORT} "
+            f"-u {config.DB_USER} "
+            f"-p{config.DB_PASSWORD} "
+            f"--single-transaction --routines --triggers "
+            f"{config.DB_NAME} > {backup_filename}"
+        )
+
+        # 3. Execute the command asynchronously
+        process = await asyncio.create_subprocess_shell(
+            command,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE
+        )
+        stdout, stderr = await process.communicate()
+
+        if process.returncode != 0:
+            error_message = stderr.decode().strip()
+            logger.error(f"Database backup failed! Return code: {process.returncode}. Error: {error_message}")
+            await context.bot.send_message(
+                chat_id=config.OWNER_ID,
+                text=f"🔴 **Database Backup Failed!**\n\n**Error:**\n`{error_message}`"
+            )
+            return
+
+        # 4. Send the backup file to the channel
+        with open(backup_filename, 'rb') as backup_file:
+            await context.bot.send_document(
+                chat_id=config.BACKUP_CHANNEL_ID,
+                document=backup_file,
+                caption=f"✅ **Database Backup**\n🗓 `{timestamp}`"
+            )
+        logger.info(f"Database backup successful. File '{backup_filename}' sent to channel {config.BACKUP_CHANNEL_ID}.")
+
+    except FileNotFoundError:
+        logger.error("`mysqldump` command not found. Make sure MySQL client tools are installed and in the system's PATH.")
+        await context.bot.send_message(
+            chat_id=config.OWNER_ID,
+            text="🔴 **Backup Failed:** `mysqldump` command not found. Please ensure MySQL client is installed on the server."
+        )
+    except Exception as e:
+        logger.error(f"An unexpected error occurred during backup: {e}")
+        await context.bot.send_message(
+            chat_id=config.OWNER_ID,
+            text=f"🔴 An unexpected error occurred during backup: {e}"
+        )
+    finally:
+        # 5. Clean up the local file
+        if os.path.exists(backup_filename):
+            os.remove(backup_filename)
+            logger.info(f"Cleaned up local backup file: {backup_filename}")
+
+# +++ End of Added Section +++
 
 # --- Helper Functions ---
 async def check_admin(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
@@ -596,6 +669,13 @@ async def admin_add_get_id(update: Update, context: ContextTypes.DEFAULT_TYPE) -
 def main():
     db.initialize_database()
     app = Application.builder().token(config.BOT_TOKEN).build()
+    
+    # +++ Added for Backup Feature +++
+    # Schedule the backup job to run every 30 minutes (1800 seconds)
+    # The first run is 15 seconds after startup for immediate feedback/testing
+    job_queue = app.job_queue
+    job_queue.run_repeating(backup_database, interval=1800, first=15)
+    # +++ End of Added Section +++
 
     submission_handler = ConversationHandler(
         entry_points=[MessageHandler(filters.Regex('^' + db.get_text(SUBMIT_EXP_BTN_KEY) + '$'), submission_start)],

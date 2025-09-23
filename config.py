@@ -20,6 +20,11 @@ if not CHANNEL_ID_STR:
     raise ValueError("ERROR: CHANNEL_ID is not set.")
 CHANNEL_ID = int(CHANNEL_ID_STR)
 
+BACKUP_CHANNEL_ID_STR = os.getenv("BACKUP_CHANNEL_ID")
+if not BACKUP_CHANNEL_ID_STR:
+    raise ValueError("ERROR: BACKUP_CHANNEL_ID is not set in .env file.")
+BACKUP_CHANNEL_ID = int(BACKUP_CHANNEL_ID_STR)
+
 
 # --- Database Configurations ---
 DB_USER = os.getenv("DB_USER", "root")
