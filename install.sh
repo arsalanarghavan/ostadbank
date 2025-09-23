@@ -6,46 +6,54 @@ if [ "$(id -u)" -ne 0 ]; then
   exit 1
 fi
 
-echo "🚀 شروع فرآیند نصب ربات OstadBank..."
+echo "🚀 شروع فرآیند نصب تمام خودکار ربات OstadBank..."
 
 # --- Update system and install dependencies ---
 echo "🔄 آپدیت کردن پکیج‌ها و نصب پیش‌نیازها (Python, pip, venv, MariaDB)..."
-apt-get update
-apt-get install -y python3 python3-pip python3-venv mariadb-server curl git
+apt-get update > /dev/null 2>&1
+apt-get install -y python3 python3-pip python3-venv mariadb-server curl git > /dev/null 2>&1
 
-# --- Secure MariaDB installation and create database ---
-echo "🔑 امن‌سازی نصب MariaDB..."
-mysql_secure_installation
+# --- Configure and Secure MariaDB, and create the database automatically ---
+echo "🔐 راه‌اندازی و امن‌سازی خودکار دیتابیس..."
 
-echo "💾 راه‌اندازی دیتابیس..."
-read -p "لطفا یک نام برای دیتابیس وارد کنید (مثال: ostadbank_db): " DB_NAME
-read -p "لطفا یک نام کاربری برای دیتابیس وارد کنید (مثال: ostadbank_user): " DB_USER
-read -sp "لطفا یک رمز عبور قوی برای کاربر دیتابیس وارد کنید: " DB_PASSWORD
-echo
+# Generate a strong random password for the database user
+DB_PASSWORD=$(openssl rand -base64 16)
+DB_NAME="ostadbank_db"
+DB_USER="ostadbank_user"
 
-# Create database and user
-mysql -u root -p <<MYSQL_SCRIPT
+# Run mysql_secure_installation non-interactively
+mysql -u root <<MYSQL_SECURE_SCRIPT
+ALTER USER 'root'@'localhost' IDENTIFIED BY '${DB_PASSWORD}';
+DELETE FROM mysql.user WHERE User='';
+DELETE FROM mysql.user WHERE User='root' AND Host NOT IN ('localhost', '127.0.0.1', '::1');
+DROP DATABASE IF EXISTS test;
+DELETE FROM mysql.db WHERE Db='test' OR Db='test\\_%';
+FLUSH PRIVILEGES;
+MYSQL_SECURE_SCRIPT
+
+# Create database and user with the generated password
+mysql -u root -p"${DB_PASSWORD}" <<MYSQL_SCRIPT
 CREATE DATABASE $DB_NAME CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 CREATE USER '$DB_USER'@'localhost' IDENTIFIED BY '$DB_PASSWORD';
 GRANT ALL PRIVILEGES ON $DB_NAME.* TO '$DB_USER'@'localhost';
 FLUSH PRIVILEGES;
 MYSQL_SCRIPT
 
-echo "✅ دیتابیس و کاربر با موفقیت ساخته شدند."
+echo "✅ دیتابیس و کاربر به صورت خودکار ساخته شدند."
 
 # --- Clone the repository ---
 echo "📂 کلون کردن پروژه از گیت‌هاب..."
 git clone https://github.com/arsalanarghavan/ostadbank.git /opt/ostadbank
 cd /opt/ostadbank
 
-# --- Create .env file ---
-echo "📝 ایجاد فایل .env برای تنظیمات..."
+# --- Create .env file from user input ---
+echo "📝 لطفا اطلاعات زیر را برای ساخت فایل .env وارد کنید..."
 read -p "لطفا توکن ربات تلگرام خود را وارد کنید: " BOT_TOKEN
 read -p "لطفا آیدی عددی ادمین اصلی ربات (Owner ID) را وارد کنید: " OWNER_ID
 read -p "لطفا آیدی کانال اصلی (برای ارسال تجربیات) را وارد کنید (با -100 شروع می‌شود): " CHANNEL_ID
 read -p "لطفا آیدی کانال بکاپ (برای ارسال بکاپ دیتابیس) را وارد کنید (با -100 شروع می‌شود): " BACKUP_CHANNEL_ID
 
-# Create the .env file with the collected data
+# Create the .env file with automated DB credentials
 cat > .env << EOF
 BOT_TOKEN=$BOT_TOKEN
 OWNER_ID=$OWNER_ID
@@ -65,8 +73,8 @@ echo "✅ فایل .env با موفقیت ساخته شد."
 echo "🐍 ساخت محیط مجازی پایتون و نصب پکیج‌های مورد نیاز..."
 python3 -m venv venv
 source venv/bin/activate
-pip install --upgrade pip
-pip install -r requirements.txt
+pip install --upgrade pip > /dev/null 2>&1
+pip install -r requirements.txt > /dev/null 2>&1
 deactivate
 
 echo "✅ پکیج‌های پایتون با موفقیت نصب شدند."
@@ -79,7 +87,7 @@ SERVICE_FILE="/etc/systemd/system/ostadbank.service"
 cat > $SERVICE_FILE << EOF
 [Unit]
 Description=OstadBank Telegram Bot
-After=network.target mysql.service
+After=network.target mariadb.service
 
 [Service]
 User=root
@@ -87,13 +95,15 @@ Group=root
 WorkingDirectory=/opt/ostadbank
 ExecStart=/opt/ostadbank/venv/bin/python main.py
 Restart=always
-RestartSec=5
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
 
 [Install]
 WantedBy=multi-user.target
 EOF
 
-echo "✅ فایل سرویس با موفقیت در مسیر $SERVICE_FILE ایجاد شد."
+echo "✅ فایل سرویس با موفقیت ایجاد شد."
 
 # --- Enable and start the service ---
 echo "▶️ فعال‌سازی و راه‌اندازی سرویس ربات..."
@@ -102,12 +112,17 @@ systemctl enable ostadbank.service
 systemctl start ostadbank.service
 
 # --- Final check ---
-echo "⏳ چند ثانیه صبر برای اطمینان از اجرای سرویس..."
+echo "⏳ بررسی وضعیت نهایی سرویس..."
 sleep 5
-systemctl status ostadbank.service --no-pager
+STATUS=$(systemctl is-active ostadbank.service)
 
-echo -e "\n\n🎉 **نصب با موفقیت به پایان رسید!**"
-echo "ربات شما اکنون در حال اجرا است و پس از هر بار ری‌استارت سرور به طور خودکار اجرا خواهد شد."
-echo "برای مشاهده لاگ‌های ربات می‌توانید از دستور زیر استفاده کنید:"
-echo "journalctl -u ostadbank -f"
-echo "برای متوقف کردن ربات از دستور 'systemctl stop ostadbank' و برای اجرای مجدد از 'systemctl start ostadbank' استفاده کنید."
+if [ "$STATUS" = "active" ]; then
+    echo -e "\n\n🎉 **نصب با موفقیت به پایان رسید!**"
+    echo "✅ ربات شما اکنون فعال و در حال اجرا است."
+    echo "برای مشاهده لاگ‌های ربات می‌توانید از دستور زیر استفاده کنید:"
+    echo "   journalctl -u ostadbank -f"
+else
+    echo -e "\n\n⚠️ **خطا در اجرای ربات!**"
+    echo "سرویس ربات نتوانست اجرا شود. برای بررسی مشکل، لاگ‌های آن را با دستور زیر مشاهده کنید:"
+    echo "   journalctl -u ostadbank --no-pager"
+fi
