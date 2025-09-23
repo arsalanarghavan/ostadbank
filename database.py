@@ -97,7 +97,7 @@ def initialize_database():
 🆔 @Shamsi_OstadBank_Bot
 ➖➖➖➖➖➖➖➖➖➖""",
             'exp_format_tags': '♊️ تگ‌ها',
-            
+
             # --- Statuses ---
             'status_pending': '⏳ در انتظار تایید',
             'status_approved': '✅ تایید شده',
@@ -148,7 +148,7 @@ def get_text(key, **kwargs):
     """Fetch a text from the database by its key and format it."""
     with session_scope() as s:
         txt = s.query(BotText).filter_by(key=key).first()
-        if not txt: 
+        if not txt:
             return f"⚠️[{key}]" # Return a noticeable error if key is not found
         return txt.value.format(**kwargs)
 
@@ -158,10 +158,10 @@ def get_paginated_texts(page=1, per_page=8):
         query = s.query(BotText).order_by(BotText.key)
         total_items = query.count()
         total_pages = math.ceil(total_items / per_page)
-        
+
         offset = (page - 1) * per_page
         items = query.limit(per_page).offset(offset).all()
-        
+
         return items, total_pages
 
 def is_admin(user_id):
@@ -169,12 +169,22 @@ def is_admin(user_id):
     with session_scope() as s:
         return s.query(Admin).filter_by(user_id=user_id).first() is not None
 
-def get_all_items(model):
-    """Get all items from a specific model, ordered by name if possible."""
+def get_all_items(model, page=1, per_page=10):
+    """Get paginated items from a specific model."""
     with session_scope() as s:
+        query = s.query(model)
         if hasattr(model, 'name'):
-            return s.query(model).order_by(model.name).all()
-        return s.query(model).all()
+            query = query.order_by(model.name)
+        elif hasattr(model, 'user_id'): # برای مرتب‌سازی ادمین‌ها
+             query = query.order_by(model.user_id)
+
+        total_items = query.count()
+        total_pages = math.ceil(total_items / per_page) if per_page > 0 else 1
+
+        offset = (page - 1) * per_page
+        items = query.limit(per_page).offset(offset).all()
+
+        return items, total_pages
 
 def get_item_by_id(model, item_id):
     """Get a single item by its primary key."""
@@ -186,10 +196,10 @@ def get_majors_by_field(field_id):
     with session_scope() as s:
         return s.query(Major).filter_by(field_id=field_id).order_by(Major.name).all()
 
-def get_courses_by_field(field_id):
-    """Get all courses belonging to a specific field."""
+def get_courses_by_major(major_id):
+    """Get all courses belonging to a specific major."""
     with session_scope() as s:
-        return s.query(Course).filter_by(field_id=field_id).order_by(Course.name).all()
+        return s.query(Course).filter_by(major_id=major_id).order_by(Course.name).all()
 
 def get_experience(exp_id):
     """Get a single experience and eagerly load related objects."""
@@ -245,3 +255,8 @@ def delete_item(model, item_id):
             s.delete(item)
             return True
         return False
+
+def get_all_admins():
+    """Get all admins from the database."""
+    with session_scope() as s:
+        return s.query(Admin).all()
