@@ -17,8 +17,16 @@ RUN apt-get update && apt-get install -y \
 # Copy the requirements file into the container
 COPY requirements.txt .
 
-# Install any needed packages specified in requirements.txt
+# --- START: اصلاحیه نهایی برای حل مشکل ---
+# First, uninstall any potentially cached or incorrect version of the library
+RUN pip uninstall -y python-telegram-bot
+
+# Now, install all other requirements, and then explicitly install the correct version of ptb
 RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir "python-telegram-bot[job-queue,webhooks]==21.1.1"
+# --- END: اصلاحیه نهایی ---
+
+# Verify the installed version
 RUN pip show python-telegram-bot
 
 # Copy the rest of the application's code into the container
