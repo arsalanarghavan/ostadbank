@@ -30,19 +30,21 @@ def admin_panel_main():
 def admin_manage_item_list(items, prefix, current_page, total_pages):
     """
     Creates a paginated list of items for the admin panel (Fields, Majors, etc.).
+    `items` is now a list of dictionaries.
     """
     keyboard = []
     for item in items:
-        name = item.name if hasattr(item, 'name') else f"Admin ID: {item.user_id}"
-        # Pass current_page to the delete callback
-        delete_callback = f"{prefix}_delete_{item.id}_{current_page}"
+        # Use dictionary access
+        name = item.get('name') or f"Admin ID: {item.get('user_id')}"
+        item_id = item['id']
+        
+        delete_callback = f"{prefix}_delete_{item_id}_{current_page}"
         row = [
             InlineKeyboardButton(name, callback_data=f"none"),
             InlineKeyboardButton(db.get_text('btn_delete'), callback_data=delete_callback)
         ]
-        if hasattr(item, 'name'):
-            # Pass current_page to the edit callback as well
-            edit_callback = f"{prefix}_edit_{item.id}_{current_page}"
+        if 'name' in item:
+            edit_callback = f"{prefix}_edit_{item_id}_{current_page}"
             row.insert(1, InlineKeyboardButton(db.get_text('btn_edit'), callback_data=edit_callback))
         keyboard.append(row)
 
@@ -62,10 +64,14 @@ def admin_manage_item_list(items, prefix, current_page, total_pages):
     return InlineKeyboardMarkup(keyboard)
 
 def admin_manage_texts_list(texts, current_page, total_pages):
-    """Creates a paginated list of bot texts for editing."""
+    """
+    Creates a paginated list of bot texts for editing.
+    `texts` is now a list of dictionaries.
+    """
     keyboard = []
     for text_item in texts:
-        keyboard.append([InlineKeyboardButton(f"`{text_item.key}`", callback_data=f"text_edit_{text_item.key}_{current_page}")])
+        key = text_item['key']
+        keyboard.append([InlineKeyboardButton(f"`{key}`", callback_data=f"text_edit_{key}_{current_page}")])
 
     pagination_row = []
     if current_page > 1:
@@ -80,43 +86,49 @@ def admin_manage_texts_list(texts, current_page, total_pages):
     return InlineKeyboardMarkup(keyboard)
 
 def confirm_delete_keyboard(prefix, item_id, page):
-    """Returns a confirmation keyboard for deleting an item, preserving the page number."""
     return InlineKeyboardMarkup([[
         InlineKeyboardButton(db.get_text('btn_confirm_delete'), callback_data=f"{prefix}_confirmdelete_{item_id}_{page}"),
         InlineKeyboardButton(db.get_text('btn_cancel_delete'), callback_data=f"admin_list_{prefix}_{page}")
     ]])
 
 def back_to_list_keyboard(prefix, page=1, is_main_panel=False):
-    """Returns a keyboard with a single button to go back to a list or the main panel."""
     if is_main_panel:
         return InlineKeyboardMarkup([[InlineKeyboardButton(db.get_text('btn_back_to_panel'), callback_data="admin_main_panel")]])
-    return InlineKeyboardMarkup([[InlineKeyboardButton(db.get_text('btn_back_to_list'), callback_data=f"admin_list_{prefix}_{page}")]])
+    
+    # For texts, the prefix is different in callback
+    list_prefix = 'texts' if prefix == 'texts' else prefix
+    return InlineKeyboardMarkup([[InlineKeyboardButton(db.get_text('btn_back_to_list'), callback_data=f"admin_list_{list_prefix}_{page}")]])
+
 
 def parent_field_selection_keyboard(fields, prefix, page=1):
-    """Returns a keyboard for selecting a parent field (for Majors and Courses)."""
-    keyboard = [[InlineKeyboardButton(f.name, callback_data=f"{prefix}_selectfield_{f.id}_{page}")] for f in fields]
+    """
+    Returns a keyboard for selecting a parent field.
+    `fields` is a list of dictionaries.
+    """
+    keyboard = [[InlineKeyboardButton(f['name'], callback_data=f"{prefix}_selectfield_{f['id']}_{page}")] for f in fields]
     keyboard.append([InlineKeyboardButton(db.get_text('btn_cancel'), callback_data=f"admin_list_{prefix}_{page}")])
     return InlineKeyboardMarkup(keyboard)
 
 def dynamic_list_keyboard(items, prefix, has_add_new=False):
-    """Creates a dynamic list of items for the user submission flow."""
+    """
+    Creates a dynamic list of items for the user submission flow.
+    `items` is a list of dictionaries.
+    """
     keyboard = []
     for item in items:
-        keyboard.append([InlineKeyboardButton(item.name, callback_data=f"{prefix}_select_{item.id}")])
+        keyboard.append([InlineKeyboardButton(item['name'], callback_data=f"{prefix}_select_{item['id']}")])
     if has_add_new:
         keyboard.append([InlineKeyboardButton(db.get_text('btn_add_new_professor'), callback_data=f"{prefix}_add_new")])
     keyboard.append([InlineKeyboardButton(db.get_text('btn_cancel'), callback_data="cancel_submission")])
     return InlineKeyboardMarkup(keyboard)
 
 def attendance_keyboard():
-    """Returns a Yes/No keyboard for the attendance question."""
     return InlineKeyboardMarkup([[
         InlineKeyboardButton(db.get_text('btn_attendance_yes'), callback_data="attendance_yes"),
         InlineKeyboardButton(db.get_text('btn_attendance_no'), callback_data="attendance_no")
     ], [InlineKeyboardButton(db.get_text('btn_cancel'), callback_data="cancel_submission")]])
 
 def admin_approval_keyboard(experience_id, user):
-    """Returns Approve/Reject keyboard with user info."""
     keyboard = [
         [
             InlineKeyboardButton(db.get_text('btn_approve_exp'), callback_data=f"exp_approve_{experience_id}"),
@@ -133,7 +145,6 @@ def admin_approval_keyboard(experience_id, user):
     return InlineKeyboardMarkup(keyboard)
 
 def rejection_reasons_keyboard(experience_id):
-    """Returns a keyboard with common rejection reasons for admins."""
     keyboard = [
         [InlineKeyboardButton(db.get_text('btn_reject_reason_1'), callback_data=f"exp_reason_{experience_id}_1")],
         [InlineKeyboardButton(db.get_text('btn_reject_reason_2'), callback_data=f"exp_reason_{experience_id}_2")],
@@ -143,7 +154,6 @@ def rejection_reasons_keyboard(experience_id):
     return InlineKeyboardMarkup(keyboard)
 
 def join_channel_keyboard():
-    """Returns a keyboard with links to required channels."""
     channels = db.get_all_required_channels()
     keyboard = []
     for channel in channels:
@@ -152,14 +162,11 @@ def join_channel_keyboard():
     return InlineKeyboardMarkup(keyboard)
 
 def admin_manage_channels_keyboard():
-    """Returns a keyboard for managing required channels."""
     channels = db.get_all_required_channels()
     is_forced = db.get_setting('force_subscribe', 'false') == 'true'
     
     keyboard = []
     for channel in channels:
-        # Note: The channel_id stored might start with '@' or be a numeric ID
-        # For simplicity, we show the link and a delete button
         keyboard.append([
             InlineKeyboardButton(channel.channel_link, url=channel.channel_link),
             InlineKeyboardButton("🗑️ حذف", callback_data=f"admin_delete_channel_{channel.id}")

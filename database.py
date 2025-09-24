@@ -5,7 +5,7 @@ from contextlib import contextmanager
 import math
 from models import (engine, create_tables, User, Admin, BotText, Field,
                     Major, Professor, Course, Experience, ExperienceStatus,
-                    RequiredChannel, Setting) # Add new models
+                    RequiredChannel, Setting)
 import config
 
 Session = sessionmaker(bind=engine)
@@ -79,7 +79,6 @@ def initialize_database():
             'exp_format_attendance': '❌ حضور و غیاب',
             'exp_format_attendance_yes': 'دارد',
             'exp_format_attendance_no': 'ندارد',
-
             'exp_format_exam': '⭕️ امتحان',
             'exp_format_conclusion': '⚠️ نتیجه گیری',
             'exp_format_footer': """➖➖➖➖➖➖➖➖➖➖
@@ -148,54 +147,50 @@ def get_text(key, **kwargs):
     with session_scope() as s:
         txt = s.query(BotText).filter_by(key=key).first()
         if not txt:
-            return f"⚠️[{key}]" # Return a noticeable error if key is not found
+            return f"⚠️[{key}]"
         return txt.value.format(**kwargs)
 
-def get_paginated_texts(page=1, per_page=8):
-    """Get a paginated list of all bot texts."""
+def get_paginated_list(model, page=1, per_page=8):
+    """Get a paginated list of items and return them as a list of dicts."""
     with session_scope() as s:
-        query = s.query(BotText).order_by(BotText.key)
+        query = s.query(model)
+        
+        if hasattr(model, 'key'):
+            query = query.order_by(model.key)
+        elif hasattr(model, 'name'):
+            query = query.order_by(model.name)
+        elif hasattr(model, 'user_id'):
+            query = query.order_by(model.user_id)
+        
         total_items = query.count()
         total_pages = math.ceil(total_items / per_page)
         offset = (page - 1) * per_page
         items = query.limit(per_page).offset(offset).all()
-        return items, total_pages
+
+        # Convert ORM objects to a list of dicts to make them session-independent
+        results = []
+        for item in items:
+            item_dict = {}
+            if hasattr(item, 'id'): item_dict['id'] = item.id
+            if hasattr(item, 'name'): item_dict['name'] = item.name
+            if hasattr(item, 'user_id'): item_dict['user_id'] = item.user_id
+            if hasattr(item, 'key'): item_dict['key'] = item.key
+            if hasattr(item, 'channel_id'): item_dict['channel_id'] = item.channel_id
+            if hasattr(item, 'channel_link'): item_dict['channel_link'] = item.channel_link
+            results.append(item_dict)
+            
+        return results, total_pages
 
 def is_admin(user_id):
     """Check if a user is an admin."""
     with session_scope() as s:
         return s.query(Admin).filter_by(user_id=user_id).first() is not None
 
-def get_all_items(model, page=1, per_page=10):
-    """Get paginated items from a specific model."""
+def get_all_items_by_parent(model, parent_id_field, parent_id):
+    """Get all items belonging to a parent and return as a list of dicts."""
     with session_scope() as s:
-        query = s.query(model)
-        if hasattr(model, 'name'):
-            query = query.order_by(model.name)
-        elif hasattr(model, 'user_id'):
-             query = query.order_by(model.user_id)
-        elif hasattr(model, 'channel_id'):
-            query = query.order_by(model.id)
-        total_items = query.count()
-        total_pages = math.ceil(total_items / per_page) if per_page > 0 else 1
-        offset = (page - 1) * per_page
-        items = query.limit(per_page).offset(offset).all()
-        return items, total_pages
-
-def get_item_by_id(model, item_id):
-    """Get a single item by its primary key."""
-    with session_scope() as s:
-        return s.query(model).get(item_id)
-
-def get_majors_by_field(field_id):
-    """Get all majors belonging to a specific field."""
-    with session_scope() as s:
-        return s.query(Major).filter_by(field_id=field_id).order_by(Major.name).all()
-
-def get_courses_by_major(major_id):
-    """Get all courses belonging to a specific major."""
-    with session_scope() as s:
-        return s.query(Course).filter_by(major_id=major_id).order_by(Course.name).all()
+        items = s.query(model).filter(getattr(model, parent_id_field) == parent_id).order_by(model.name).all()
+        return [{'id': item.id, 'name': item.name} for item in items]
 
 def get_experience(exp_id):
     """Get a single experience and eagerly load related objects."""
@@ -210,15 +205,20 @@ def get_experience(exp_id):
 def get_user_experiences(user_id):
     """Get all experiences submitted by a specific user."""
     with session_scope() as s:
-        return s.query(Experience).filter_by(user_id=user_id).all()
+        # Eagerly load relationships to prevent DetachedInstanceError later
+        exps = s.query(Experience).options(
+            joinedload(Experience.course),
+            joinedload(Experience.professor)
+        ).filter_by(user_id=user_id).all()
+        return exps
 
 def add_item(model, **kwargs):
     """Add a new item to the database."""
     with session_scope() as s:
         new_item = model(**kwargs)
         s.add(new_item)
-        s.flush()
-        return new_item
+        s.flush() # Flush to get the ID of the new item
+        return new_item.id
 
 def update_item(model, item_id, **kwargs):
     """Update an existing item in the database."""
@@ -254,10 +254,17 @@ def delete_item(model, item_id):
             return True
         return False
 
-def get_all_admins():
-    """Get all admins from the database."""
+def get_item_name(model, item_id):
+    """Get the name of a single item by its ID."""
     with session_scope() as s:
-        return s.query(Admin).all()
+        item = s.query(model).get(item_id)
+        if not item:
+            return None
+        if hasattr(item, 'name'):
+            return item.name
+        if hasattr(item, 'user_id'):
+            return f"ID: {item.user_id}"
+        return f"ID: {item.id}"
 
 def get_all_users():
     """Get all users from the database."""
@@ -292,6 +299,7 @@ def set_setting(key, value):
             s.add(Setting(key=key, value=str(value)))
 
 def get_all_required_channels():
-    """Get all required channels from the database."""
+    """Get all required channels from the database as dicts."""
     with session_scope() as s:
-        return s.query(RequiredChannel).all()
+        channels = s.query(RequiredChannel).all()
+        return [{'id': c.id, 'channel_id': c.channel_id, 'channel_link': c.channel_link} for c in channels]
