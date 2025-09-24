@@ -11,6 +11,8 @@ from telegram.ext import (
 )
 from telegram.helpers import escape_markdown
 from telegram.error import TelegramError
+from fastapi import FastAPI, Request, Response
+from contextlib import asynccontextmanager
 
 import config
 import database as db
@@ -199,13 +201,12 @@ async def select_major(update: Update, context: ContextTypes.DEFAULT_TYPE) -> St
     await query.edit_message_text(db.get_text('choose_course'), reply_markup=kb.dynamic_list_keyboard(courses, 'course'))
     return States.SELECTING_COURSE
 
-async def select_course(update: Update, context: ContextTypes.DEFAULT_TYPE) -> States:
+async def select_professor(update: Update, context: ContextTypes.DEFAULT_TYPE) -> States:
     query = update.callback_query
     await query.answer()
-    context.user_data['experience']['course_id'] = int(query.data.split('_')[-1])
-    professors, _ = db.get_paginated_list(Professor, per_page=100)
-    await query.edit_message_text(db.get_text('choose_professor'), reply_markup=kb.dynamic_list_keyboard(professors, 'professor', has_add_new=True))
-    return States.SELECTING_PROFESSOR
+    context.user_data['experience']['professor_id'] = int(query.data.split('_')[-1])
+    await query.edit_message_text(db.get_text('ask_teaching_style'))
+    return States.GETTING_TEACHING
 
 async def add_new_professor_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> States:
     query = update.callback_query
@@ -659,47 +660,46 @@ ptb_app.add_handler(CallbackQueryHandler(admin_list_items_callback, pattern=ADMI
 ptb_app.add_handler(CallbackQueryHandler(item_delete_callback, pattern=ITEM_DELETE))
 ptb_app.add_handler(CallbackQueryHandler(item_confirm_delete_callback, pattern=ITEM_CONFIRM_DELETE))
 
-# --- START: بخش نهایی و اصلاح‌شده برای اجرا ---
+# ۳. تعریف توابع برای زمان شروع و پایان کار برنامه
+async def on_startup(application: Application):
+    """کارهایی که در زمان شروع به کار ربات باید انجام شود"""
+    application.job_queue.run_repeating(backup_database, interval=1800, first=15)
+    webhook_url = f"https://{config.DOMAIN_NAME}/{config.BOT_TOKEN}"
+    await application.bot.set_webhook(
+        url=webhook_url,
+        allowed_updates=Update.ALL_TYPES
+    )
+    logger.info(f"Webhook has been set to: {webhook_url}")
 
-# کتابخانه‌های لازم برای ASGI و FastAPI را اضافه کنید
-from fastapi import FastAPI, Request, Response
-from contextlib import asynccontextmanager
+async def on_shutdown(application: Application):
+    """کارهایی که در زمان خاموش شدن ربات باید انجام شود"""
+    logger.info("Bot is shutting down...")
 
-# این تابع در زمان شروع و پایان برنامه فراخوانی می‌شود.
+# ۴. اتصال توابع شروع و پایان به برنامه
+ptb_app.post_init = on_startup
+ptb_app.post_shutdown = on_shutdown
+
+# ۵. ساخت "سوئیچ استارت" نهایی برای Uvicorn
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """
-    تابع مدیریت چرخه حیات برنامه.
-    این تابع مسئول راه‌اندازی و خاموش کردن برنامه ptb است.
-    """
     print("Application starting...")
-    # ptb_app را قبل از شروع سرور مقداردهی اولیه و راه‌اندازی کنید.
     await ptb_app.initialize()
     await ptb_app.updater.start_webhook()
-    # پس از آماده‌سازی، کنترل را به سرور Uvicorn واگذار کنید.
     yield
-    # ptb_app را هنگام خاموش شدن سرور به درستی خاموش کنید.
     print("Application shutting down...")
     await ptb_app.updater.stop()
     await ptb_app.shutdown()
 
 
-# یک شیء FastAPI ایجاد کنید و تابع lifespan را به آن متصل کنید.
 app = FastAPI(lifespan=lifespan)
 
-# یک Endpoint برای دریافت وب‌هوک تلگرام ایجاد کنید.
 @app.post(f"/{config.BOT_TOKEN}")
 async def webhook_handler(request: Request):
-    """
-    این تابع وب‌هوک‌های دریافتی از تلگرام را دریافت و پردازش می‌کند.
-    """
     update_data = await request.json()
     update = Update.de_json(update_data, ptb_app.bot)
-    # به‌روزرسانی را به صورت غیرهمگام (asynchronously) به ptb_app منتقل کنید.
     asyncio.create_task(ptb_app.process_update(update))
     return Response(content="OK", status_code=200)
 
-# اگر فایل به صورت مستقیم (با polling) اجرا شود، این بخش اجرا می‌شود.
 if __name__ == "__main__":
     asyncio.run(ptb_app.run_polling())
 
