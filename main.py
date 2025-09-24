@@ -686,6 +686,5 @@ ptb_app.post_shutdown = on_shutdown
 
 # ۵. ساخت "سوئیچ استارت" نهایی برای Uvicorn
 # این متغیر application همان چیزی است که Uvicorn اجرا خواهد کرد
-application = ptb_app.asgi_app
-
+app = ptb_app.asgi_app
 # --- END: بخش نهایی ---
