@@ -32,9 +32,9 @@ from constants import (
 logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# --- راه حل: دیتابیس را همینجا مقداردهی اولیه کنید ---
+# --- دیتابیس را همینجا مقداردهی اولیه کنید ---
 db.initialize_database()
-# ---------------------------------------------------
+# -------------------------------------------
 
 # --- مدل‌ها و پیشوندها ---
 MODEL_MAP = {
@@ -673,7 +673,8 @@ ptb_app.add_handler(CallbackQueryHandler(item_confirm_delete_callback, pattern=I
 async def on_startup(application: Application):
     """کارهایی که در زمان شروع به کار ربات باید انجام شود"""
     application.job_queue.run_repeating(backup_database, interval=1800, first=15)
-    logger.info("Bot application is ready to receive webhooks.")
+    webhook_url = f"https://{config.DOMAIN_NAME}/{config.BOT_TOKEN}"
+    logger.info(f"The bot is running and listening for webhooks at: {webhook_url}")
 
 async def on_shutdown(application: Application):
     """کارهایی که در زمان خاموش شدن ربات باید انجام شود"""
@@ -689,7 +690,9 @@ ptb_app.post_shutdown = on_shutdown
 async def lifespan(app: FastAPI):
     print("Application starting...")
     await ptb_app.initialize()
-    await ptb_app.updater.start_webhook()
+    # این خط را حذف یا کامنت می‌کنیم تا وب‌هوک به صورت خودکار تنظیم نشود
+    # await ptb_app.updater.start_webhook()
+    await ptb_app.start()
     yield
     print("Application shutting down...")
     await ptb_app.updater.stop()
