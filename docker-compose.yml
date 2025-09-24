@@ -14,8 +14,8 @@ services:
       - "--certificatesresolvers.myresolver.acme.email=${LETSENCRYPT_EMAIL}"
       - "--certificatesresolvers.myresolver.acme.storage=/letsencrypt/acme.json"
     ports:
-      - "127.0.0.1:8080:80"
-      - "127.0.0.1:8443:443"
+      - "80:80"
+      - "443:443"
     environment:
       - "CLOUDFLARE_DNS_API_TOKEN=${CLOUDFLARE_API_TOKEN}"
     volumes:
