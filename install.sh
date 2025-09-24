@@ -44,6 +44,7 @@ cd /opt/ostadbank
 # --- Create .env file from user input ---
 echo "📝 Please enter the following information to create the .env file..."
 read -p "Enter your domain name (e.g., bot.yourdomain.com): " DOMAIN_NAME
+read -p "Enter a public port for Webhook (e.g., 8443, 443, 88): " WEBHOOK_PORT
 read -p "Enter your email for Let's Encrypt SSL certificate: " LETSENCRYPT_EMAIL
 read -p "Enter your Telegram Bot Token: " BOT_TOKEN
 read -p "Enter the numeric ID of the bot's Owner: " OWNER_ID
@@ -61,6 +62,8 @@ cat > .env << EOF
 # Webhook and SSL Settings
 DOMAIN_NAME=$DOMAIN_NAME
 LETSENCRYPT_EMAIL=$LETSENCRYPT_EMAIL
+WEBHOOK_PORT=${WEBHOOK_PORT:-8443}
+HTTP_PORT=${HTTP_PORT:-8080} # Port for Let's Encrypt HTTP challenge
 
 # Telegram Bot Settings
 BOT_TOKEN=$BOT_TOKEN

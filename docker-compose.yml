@@ -6,7 +6,7 @@ services:
     container_name: "traefik"
     restart: always
     command:
-      - "--api.insecure=true" # For viewing the Traefik dashboard (optional)
+      - "--api.insecure=true"
       - "--providers.docker=true"
       - "--providers.docker.exposedbydefault=false"
       - "--entrypoints.web.address=:80"
@@ -14,13 +14,11 @@ services:
       - "--certificatesresolvers.myresolver.acme.tlschallenge=true"
       - "--certificatesresolvers.myresolver.acme.email=${LETSENCRYPT_EMAIL}"
       - "--certificatesresolvers.myresolver.acme.storage=/letsencrypt/acme.json"
-      # Redirect all HTTP to HTTPS
       - "--entrypoints.web.http.redirections.entrypoint.to=websecure"
       - "--entrypoints.web.http.redirections.entrypoint.scheme=https"
     ports:
-      - "80:80"
-      - "443:443"
-      # - "8080:8080" # Traefik Dashboard port
+      - "${HTTP_PORT:-8080}:80"
+      - "${WEBHOOK_PORT:-8443}:443"
     volumes:
       - "/var/run/docker.sock:/var/run/docker.sock:ro"
       - "letsencrypt_data:/letsencrypt"

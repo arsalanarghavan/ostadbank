@@ -424,7 +424,7 @@ async def show_stats_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
     await query.edit_message_text(
         db.get_text('stats_message', **stats),
         parse_mode=constants.ParseMode.MARKDOWN_V2,
-        reply_markup=kb.back_to_list_keyboard("main_panel", is_main_panel=True) # Corrected
+        reply_markup=kb.back_to_list_keyboard("main_panel", is_main_panel=True)
     )
 
 async def broadcast_start_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> States:
@@ -540,7 +540,6 @@ async def admin_list_items_callback(update: Update, context: ContextTypes.DEFAUL
     prefix = parts[2]
     page = int(parts[3])
     
-    # Handle 'texts' prefix specifically
     if prefix == 'texts':
         model = MODEL_MAP['text']
         items, total_pages = db.get_paginated_texts(page=page)
@@ -595,20 +594,18 @@ async def item_confirm_delete_callback(update: Update, context: ContextTypes.DEF
     db.delete_item(model, item_id)
     await query.answer(db.get_text('item_deleted_successfully'), show_alert=True)
     
-    # Refresh list
-    query.data = f"admin_list_{prefix}_{page}" # Simulate a click on the list button
+    query.data = f"admin_list_{prefix}_{page}"
     await admin_list_items_callback(update, context)
 
 
 async def item_add_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> States:
-    """Starts the process of adding a new item (Field, Major, etc.)."""
     if not await check_admin(update, context): return ConversationHandler.END
     query = update.callback_query
     await query.answer()
     
     parts = query.data.split('_')
     prefix = parts[0]
-    page = int(parts[2]) # Corrected index
+    page = int(parts[2])
     
     context.user_data['prefix'] = prefix
     context.user_data['page'] = page
@@ -625,7 +622,6 @@ async def item_add_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         return States.GETTING_NEW_NAME
 
 async def item_add_receive_name(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Receives the name for the new item and saves it."""
     prefix = context.user_data.get('prefix')
     page = context.user_data.get('page')
     parent_id = context.user_data.get('parent_id')
@@ -639,15 +635,12 @@ async def item_add_receive_name(update: Update, context: ContextTypes.DEFAULT_TY
     db.add_item(model, **kwargs)
     await update.message.reply_text(db.get_text('item_added_successfully'))
     
-    # Refresh list
-    query_data = f"admin_list_{prefix}_{page}"
     await context.bot.send_message(chat_id=update.effective_chat.id, text="بازگشت به لیست...", reply_markup=kb.back_to_list_keyboard(prefix, page))
 
     context.user_data.clear()
     return ConversationHandler.END
 
 async def item_add_select_parent(update: Update, context: ContextTypes.DEFAULT_TYPE) -> States:
-    """Handles selection of a parent item (e.g., a Field for a new Major)."""
     query = update.callback_query
     await query.answer()
     
@@ -659,7 +652,6 @@ async def item_add_select_parent(update: Update, context: ContextTypes.DEFAULT_T
     return States.GETTING_NEW_NAME
 
 async def admin_add_get_id(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Adds a new admin by their user ID."""
     try:
         user_id = int(update.message.text)
         db.add_item(Admin, user_id=user_id)
@@ -749,13 +741,11 @@ def main():
     app.add_handler(CommandHandler("start", start_command))
     app.add_handler(CommandHandler("admin", admin_command))
 
-    # User Handlers
     app.add_handler(submission_handler)
     app.add_handler(MessageHandler(filters.Regex('^' + db.get_text(MY_EXPS_BTN_KEY) + '$'), my_experiences_command))
     app.add_handler(MessageHandler(filters.Regex('^' + db.get_text(RULES_BTN_KEY) + '$'), rules_command))
     app.add_handler(CallbackQueryHandler(membership_check_callback, pattern=CHECK_MEMBERSHIP))
     
-    # Admin Panel Handlers
     app.add_handler(broadcast_handler)
     app.add_handler(single_message_handler)
     app.add_handler(add_channel_handler)
@@ -764,31 +754,32 @@ def main():
     app.add_handler(CallbackQueryHandler(show_stats_callback, pattern=r'^admin_stats$'))
     app.add_handler(CallbackQueryHandler(experience_approval_handler, pattern=EXPERIENCE_APPROVAL))
     
-    # Channel Management Handlers
     app.add_handler(CallbackQueryHandler(admin_manage_channels_callback, pattern=ADMIN_MANAGE_CHANNELS))
     app.add_handler(CallbackQueryHandler(admin_toggle_force_sub_callback, pattern=ADMIN_TOGGLE_FORCE_SUB))
     app.add_handler(CallbackQueryHandler(admin_delete_channel_callback, pattern=ADMIN_DELETE_CHANNEL))
     
-    # CRUD Handlers
     app.add_handler(CallbackQueryHandler(admin_list_items_callback, pattern=ADMIN_LIST_ITEMS))
     app.add_handler(CallbackQueryHandler(admin_list_items_callback, pattern=ADMIN_LIST_TEXTS))
     app.add_handler(CallbackQueryHandler(item_delete_callback, pattern=ITEM_DELETE))
     app.add_handler(CallbackQueryHandler(item_confirm_delete_callback, pattern=ITEM_CONFIRM_DELETE))
 
+
     # --- Webhook or Polling ---
-    # Check for DOMAIN_NAME in environment to decide run mode
     if config.DOMAIN_NAME:
-        logger.info(f"Starting bot in webhook mode for domain: {config.DOMAIN_NAME}")
+        # اگر پورت ۴۴۳ نبود، آن را به آدرس اضافه کن
+        port_suffix = f":{config.WEBHOOK_PORT}" if config.WEBHOOK_PORT not in [443, 80, 88] else ""
+        webhook_url = f"https://{config.DOMAIN_NAME}{port_suffix}/{config.BOT_TOKEN}"
+        
+        logger.info(f"Starting bot in webhook mode. URL: {webhook_url}")
         app.run_webhook(
             listen="0.0.0.0",
-            port=8443,
-            url_path=config.BOT_TOKEN, # Using bot token as secret path
-            webhook_url=f"https://{config.DOMAIN_NAME}/{config.BOT_TOKEN}"
+            port=8443,  # این پورت داخلی بین traefik و ربات است و ثابت می‌ماند
+            url_path=config.BOT_TOKEN,
+            webhook_url=webhook_url
         )
     else:
         logger.info("Starting bot in polling mode...")
         app.run_polling()
-
 
 if __name__ == "__main__":
     main()

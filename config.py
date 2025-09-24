@@ -29,12 +29,14 @@ BACKUP_CHANNEL_ID = int(BACKUP_CHANNEL_ID_STR)
 # --- Webhook Configurations (Added) ---
 DOMAIN_NAME = os.getenv("DOMAIN_NAME", None)
 LETSENCRYPT_EMAIL = os.getenv("LETSENCRYPT_EMAIL", None)
+# پورت عمومی برای وبهوک را می‌خواند
+WEBHOOK_PORT = int(os.getenv("WEBHOOK_PORT", 443))
 
 
 # --- Database Configurations ---
 DB_USER = os.getenv("DB_USER", "root")
 DB_PASSWORD = os.getenv("DB_PASSWORD", "")
-DB_HOST = os.getenv("DB_HOST", "127.0.0.1") # Default to localhost if not set
+DB_HOST = os.getenv("DB_HOST", "db") # Changed for Docker
 DB_PORT = os.getenv("DB_PORT", "3306")
 DB_NAME = os.getenv("DB_NAME", "ostadbank_db")
 
