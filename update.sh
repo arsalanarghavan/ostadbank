@@ -1,59 +1,51 @@
 #!/bin/bash
 
-# مسیر پروژه
-PROJECT_DIR="/opt/ostadbank"
-GIT_REPO_URL="https://github.com/arsalanarghavan/ostadbank.git"
-
-# بررسی دسترسی root
+# --- Check for root privileges ---
 if [ "$(id -u)" -ne 0 ]; then
-  echo "❌ این اسکریپت باید با دسترسی root یا sudo اجرا شود."
+  echo "❌ This script must be run with root or sudo privileges."
   exit 1
 fi
 
-echo "🚀 شروع فرآیند دانلود/آپدیت ربات..."
-
-# بررسی وجود پوشه پروژه
+# --- Navigate to the project directory ---
+PROJECT_DIR="/opt/ostadbank"
 if [ ! -d "$PROJECT_DIR" ]; then
-    echo "📂 پوشه پروژه یافت نشد. در حال کلون کردن از گیت‌هاب..."
-    git clone $GIT_REPO_URL $PROJECT_DIR
-    if [ $? -ne 0 ]; then
-        echo "❌ خطا در کلون کردن پروژه."
-        exit 1
-    fi
-    echo "✅ پروژه با موفقیت کلون شد."
-else
-    echo "🔄 پوشه پروژه وجود دارد. در حال آپدیت کردن با git pull..."
-    cd $PROJECT_DIR
-    git pull origin main # یا هر شاخه دیگری که مد نظرتان است
-    if [ $? -ne 0 ]; then
-        echo "⚠️ هشداری در هنگام git pull رخ داد (ممکن است به دلیل وجود تغییرات локальный باشد). تلاش برای ریست کردن..."
-        git fetch --all
-        git reset --hard origin/main
-    fi
-    echo "✅ پروژه با موفقیت آپدیت شد."
+    echo "❌ Project directory not found at $PROJECT_DIR. Please run the install script first."
+    exit 1
+fi
+cd $PROJECT_DIR
+
+echo "🚀 Starting the bot update process..."
+
+# --- Fetch the latest code from GitHub ---
+echo "🔄 Pulling the latest changes from the 'main' branch..."
+git fetch --all
+git reset --hard origin/main # This command discards any local changes and ensures a clean update
+git pull origin main
+if [ $? -ne 0 ]; then
+    echo "❌ Failed to pull updates from GitHub. Please check for errors."
+    exit 1
+fi
+echo "✅ Code updated successfully."
+
+# --- Rebuild and restart the Docker containers ---
+echo "⚙️ Rebuilding and restarting the Docker containers..."
+docker-compose up -d --build
+if [ $? -ne 0 ]; then
+    echo "❌ Failed to rebuild or start the containers. Please check Docker logs."
+    exit 1
 fi
 
-# نصب یا آپدیت پکیج‌های پایتون
-echo "🐍 آپدیت کردن پکیج‌های مورد نیاز..."
-cd $PROJECT_DIR
-source venv/bin/activate
-pip install -r requirements.txt
-deactivate
+# --- Final check ---
+echo "⏳ Checking the final status of the containers..."
+sleep 5
 
-# ری‌استارت کردن سرویس ربات
-echo "⚙️ راه‌اندازی مجدد سرویس ربات..."
-systemctl restart ostadbank.service
-
-# بررسی وضعیت نهایی سرویس
-echo "⏳ بررسی وضعیت نهایی سرویس..."
-sleep 3
-STATUS=$(systemctl is-active ostadbank.service)
-
-if [ "$STATUS" = "active" ]; then
-    echo -e "\n🎉 **عملیات با موفقیت انجام شد!**"
-    echo "✅ ربات شما اکنون با آخرین تغییرات در حال اجرا است."
+if docker-compose ps | grep "Up"; then
+    echo -e "\n\n🎉 **Update completed successfully!**"
+    echo "✅ Your bot is now running with the latest code."
+    echo "To view the bot's logs, use the command:"
+    echo "   cd /opt/ostadbank && docker-compose logs -f app"
 else
-    echo -e "\n\n⚠️ **خطا در اجرای ربات!**"
-    echo "سرویس ربات نتوانست اجرا شود. لاگ‌ها را بررسی کنید:"
-    echo "   journalctl -u ostadbank -f"
+    echo -e "\n\n⚠️ **Error running containers after update!**"
+    echo "To investigate the issue, view the logs with:"
+    echo "   cd /opt/ostadbank && docker-compose logs"
 fi
