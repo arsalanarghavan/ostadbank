@@ -201,12 +201,13 @@ async def select_major(update: Update, context: ContextTypes.DEFAULT_TYPE) -> St
     await query.edit_message_text(db.get_text('choose_course'), reply_markup=kb.dynamic_list_keyboard(courses, 'course'))
     return States.SELECTING_COURSE
 
-async def select_professor(update: Update, context: ContextTypes.DEFAULT_TYPE) -> States:
+async def select_course(update: Update, context: ContextTypes.DEFAULT_TYPE) -> States:
     query = update.callback_query
     await query.answer()
-    context.user_data['experience']['professor_id'] = int(query.data.split('_')[-1])
-    await query.edit_message_text(db.get_text('ask_teaching_style'))
-    return States.GETTING_TEACHING
+    context.user_data['experience']['course_id'] = int(query.data.split('_')[-1])
+    professors, _ = db.get_paginated_list(Professor, per_page=100)
+    await query.edit_message_text(db.get_text('choose_professor'), reply_markup=kb.dynamic_list_keyboard(professors, 'professor', has_add_new=True))
+    return States.SELECTING_PROFESSOR
 
 async def add_new_professor_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> States:
     query = update.callback_query
@@ -565,7 +566,6 @@ async def text_edit_receive_value(update: Update, context: ContextTypes.DEFAULT_
     await update.message.reply_text(db.get_text('item_updated_successfully'), reply_markup=kb.back_to_list_keyboard('texts', page))
     context.user_data.clear()
     return ConversationHandler.END
-
 
 # --- START: بخش نهایی و اصلاح‌شده برای اجرا ---
 
