@@ -21,10 +21,8 @@ fi
 
 if ! command -v docker-compose &> /dev/null; then
     echo "🧩 Docker Compose not found. Installing Docker Compose..."
-    # First, try installing the plugin via apt, which is the modern way
     apt-get update > /dev/null 2>&1
     apt-get install -y docker-compose-plugin > /dev/null 2>&1
-    # If the command still doesn't exist, fall back to the manual binary download
      if ! command -v docker-compose &> /dev/null; then
         LATEST_COMPOSE=$(curl -s https://api.github.com/repos/docker/compose/releases/latest | grep "tag_name" | cut -d'"' -f4)
         curl -L "https://github.com/docker/compose/releases/download/${LATEST_COMPOSE}/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
@@ -35,23 +33,27 @@ else
     echo "✅ Docker Compose is already installed."
 fi
 
-
 # --- Clone the repository ---
-echo "📂 Cloning the project from GitHub..."
-git clone https://github.com/arsalanarghavan/ostadbank.git /opt/ostadbank
+if [ ! -d "/opt/ostadbank" ]; then
+    echo "📂 Cloning the project from GitHub..."
+    git clone https://github.com/arsalanarghavan/ostadbank.git /opt/ostadbank
+fi
 cd /opt/ostadbank
+git pull origin main # Ensure the code is up-to-date
 
 # --- Create .env file from user input ---
 echo "📝 Please enter the following information to create the .env file..."
 read -p "Enter your domain name (e.g., bot.yourdomain.com): " DOMAIN_NAME
-read -p "Enter a public port for Webhook (e.g., 8443, 443, 88): " WEBHOOK_PORT
 read -p "Enter your email for Let's Encrypt SSL certificate: " LETSENCRYPT_EMAIL
 read -p "Enter your Telegram Bot Token: " BOT_TOKEN
 read -p "Enter the numeric ID of the bot's Owner: " OWNER_ID
 read -p "Enter the main channel ID (starts with -100): " CHANNEL_ID
 read -p "Enter the backup channel ID (starts with -100): " BACKUP_CHANNEL_ID
+# --- START: بخش جدید برای توکن کلادفلر ---
+read -p "Enter your Cloudflare API Token (for DNS Challenge): " CLOUDFLARE_API_TOKEN
+# --- END: بخش جدید ---
 
-# Generate strong, random passwords for the database
+# Generate strong, random passwords for the database if they don't exist
 DB_PASSWORD=$(openssl rand -hex 16)
 DB_ROOT_PASSWORD=$(openssl rand -hex 16)
 DB_NAME="ostadbank_db"
@@ -62,8 +64,6 @@ cat > .env << EOF
 # Webhook and SSL Settings
 DOMAIN_NAME=$DOMAIN_NAME
 LETSENCRYPT_EMAIL=$LETSENCRYPT_EMAIL
-WEBHOOK_PORT=${WEBHOOK_PORT:-8443}
-HTTP_PORT=${HTTP_PORT:-8080} # Port for Let's Encrypt HTTP challenge
 
 # Telegram Bot Settings
 BOT_TOKEN=$BOT_TOKEN
@@ -79,49 +79,40 @@ DB_NAME=$DB_NAME
 DB_USER=$DB_USER
 DB_PASSWORD=$DB_PASSWORD
 DB_ROOT_PASSWORD=$DB_ROOT_PASSWORD
+
+# --- START: بخش جدید برای توکن کلادفلر ---
+# Cloudflare API Token for DNS-01 Challenge
+CLOUDFLARE_API_TOKEN=$CLOUDFLARE_API_TOKEN
+# --- END: بخش جدید ---
 EOF
 
 echo "✅ .env file created successfully."
 
+# --- Check for existing database ---
+if [ ! -z "$(docker volume ls -q -f name=ostadbank_mariadb_data)" ]; then
+    echo "ℹ️ An existing database was found and will be reused. Your data is safe."
+fi
+
 # --- Build and run the containers using Docker Compose ---
 echo "🚀 Building images and running containers..."
+# Clean up previous failed SSL attempts if they exist
+docker volume rm ostadbank_letsencrypt_data > /dev/null 2>&1
 # Pulling images first to ensure we have the latest base images
 docker-compose pull
 docker-compose up -d --build
 
-# --- New: Wait for SSL certificate to be issued ---
-echo "⏳ Waiting for the SSL certificate to be issued..."
-MAX_TRIES=60
-SLEEP_INTERVAL=5
-count=0
-while [ $count -lt $MAX_TRIES ]; do
-  # Use curl to check for a successful HTTPS connection
-  if curl -sS -I "https://$DOMAIN_NAME" &> /dev/null; then
-    echo -e "\n✅ SSL certificate obtained successfully!"
-    break
-  fi
-  
-  echo "Still waiting... (attempt $((count + 1)) of $MAX_TRIES)"
-  sleep $SLEEP_INTERVAL
-  count=$((count + 1))
-done
-
-if [ $count -eq $MAX_TRIES ]; then
-  echo -e "\n❌ Failed to obtain SSL certificate after multiple attempts. Please check your DNS and firewall settings."
-  echo "You can check Traefik logs for more details: cd /opt/ostadbank && docker-compose logs -f traefik"
-  exit 1
-fi
-
 # --- Final check ---
 echo "⏳ Checking the final status of the containers..."
-STATUS=$(docker-compose ps -q)
+sleep 15 # Give Traefik some time to request the certificate
 
-if [ -n "$STATUS" ]; then
+if docker-compose ps | grep "Up"; then
     echo -e "\n\n🎉 **Installation completed successfully!**"
-    echo "✅ Your bot is now active and running in Docker containers."
-    echo "✅ An SSL certificate should be automatically configured for https://$DOMAIN_NAME"
-    echo "To view the bot's logs, you can use the command:"
+    echo "✅ Your bot should now be active and running."
+    echo "✅ An SSL certificate will be automatically configured using Cloudflare DNS."
+    echo "To view the bot's logs, use the command:"
     echo "   cd /opt/ostadbank && docker-compose logs -f app"
+    echo "To view Traefik's logs (for SSL issues), use:"
+    echo "   cd /opt/ostadbank && docker-compose logs -f traefik"
     echo -e "\nList of running containers:"
     docker-compose ps
 else
