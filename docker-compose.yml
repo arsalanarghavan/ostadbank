@@ -15,8 +15,8 @@ services:
       - "--entrypoints.web.http.redirections.entrypoint.to=websecure"
       - "--entrypoints.web.http.redirections.entrypoint.scheme=https"
     ports:
-      - "${HTTP_PORT:-8080}:80"
-      - "${WEBHOOK_PORT:-8443}:443"
+      - "80:80"
+      - "443:443" # <-- تغییر اصلی اینجاست
     volumes:
       - "/var/run/docker.sock:/var/run/docker.sock:ro"
       - "letsencrypt_data:/letsencrypt"

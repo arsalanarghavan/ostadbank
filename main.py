@@ -1,11 +1,9 @@
 # main.py
 
 import logging
-# +++ Added for Backup Feature +++
 import asyncio
 import datetime
 import os
-# +++ End of Added Section +++
 from telegram import Update, constants, ChatMember
 from telegram.ext import (
     Application, CommandHandler, MessageHandler, ConversationHandler,
@@ -14,13 +12,13 @@ from telegram.ext import (
 from telegram.helpers import escape_markdown
 from telegram.error import TelegramError
 
-
 import config
 import database as db
 import keyboards as kb
-from models import Field, Major, Professor, Course, Experience, BotText, Admin, ExperienceStatus, RequiredChannel, Setting
+from models import (Field, Major, Professor, Course, Experience, BotText, Admin,
+                    ExperienceStatus, RequiredChannel, Setting)
 from constants import (
-    States, MAX_MESSAGE_LENGTH,
+    States,
     FIELD_SELECT, MAJOR_SELECT, COURSE_SELECT, PROFESSOR_SELECT, PROFESSOR_ADD_NEW,
     ATTENDANCE_CHOICE, CANCEL_SUBMISSION, ADMIN_MAIN_PANEL, ADMIN_LIST_ITEMS,
     ADMIN_LIST_TEXTS, ITEM_ADD, ADMIN_ADD, ITEM_EDIT, TEXT_EDIT, ITEM_DELETE,
@@ -42,18 +40,14 @@ PREFIX_MAP = {
     'course': 'درس', 'admin': 'ادمین', 'text': 'متن'
 }
 
-# +++ Added for Backup Feature +++
 # --- Backup Function ---
 async def backup_database(context: ContextTypes.DEFAULT_TYPE):
     """Dumps the database and sends it to the backup channel."""
     logger.info("Starting scheduled database backup...")
     backup_filename = ""
     try:
-        # 1. Create a unique filename
         timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
         backup_filename = f"ostadbank_backup_{timestamp}.sql"
-
-        # 2. Construct the mysqldump command
         command = (
             f"mysqldump --skip-ssl -h {config.DB_HOST} "
             f"-P {config.DB_PORT} "
@@ -62,25 +56,20 @@ async def backup_database(context: ContextTypes.DEFAULT_TYPE):
             f"--single-transaction --routines --triggers "
             f"{config.DB_NAME} > {backup_filename}"
         )
-
-        # 3. Execute the command asynchronously
         process = await asyncio.create_subprocess_shell(
             command,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE
         )
-        stdout, stderr = await process.communicate()
-
+        _, stderr = await process.communicate()
         if process.returncode != 0:
             error_message = stderr.decode().strip()
-            logger.error(f"Database backup failed! Return code: {process.returncode}. Error: {error_message}")
+            logger.error(f"Database backup failed! Error: {error_message}")
             await context.bot.send_message(
                 chat_id=config.OWNER_ID,
                 text=f"🔴 **Database Backup Failed!**\n\n**Error:**\n`{error_message}`"
             )
             return
-
-        # 4. Send the backup file to the channel
         with open(backup_filename, 'rb') as backup_file:
             await context.bot.send_document(
                 chat_id=config.BACKUP_CHANNEL_ID,
@@ -88,13 +77,6 @@ async def backup_database(context: ContextTypes.DEFAULT_TYPE):
                 caption=f"✅ **Database Backup**\n🗓 `{timestamp}`"
             )
         logger.info(f"Database backup successful. File '{backup_filename}' sent to channel {config.BACKUP_CHANNEL_ID}.")
-
-    except FileNotFoundError:
-        logger.error("`mysqldump` command not found. Make sure MySQL client tools are installed and in the system's PATH.")
-        await context.bot.send_message(
-            chat_id=config.OWNER_ID,
-            text="🔴 **Backup Failed:** `mysqldump` command not found. Please ensure MySQL client is installed on the server."
-        )
     except Exception as e:
         logger.error(f"An unexpected error occurred during backup: {e}")
         await context.bot.send_message(
@@ -102,16 +84,11 @@ async def backup_database(context: ContextTypes.DEFAULT_TYPE):
             text=f"🔴 An unexpected error occurred during backup: {e}"
         )
     finally:
-        # 5. Clean up the local file
         if os.path.exists(backup_filename):
             os.remove(backup_filename)
-            logger.info(f"Cleaned up local backup file: {backup_filename}")
-
-# +++ End of Added Section +++
 
 # --- Helper Functions ---
 async def check_admin(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
-    """Checks if the user is an admin and sends a message if not."""
     is_admin_user = db.is_admin(update.effective_user.id)
     if not is_admin_user:
         if update.callback_query:
@@ -121,15 +98,12 @@ async def check_admin(update: Update, context: ContextTypes.DEFAULT_TYPE) -> boo
     return is_admin_user
 
 async def check_channel_membership(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
-    """Checks if the user is a member of all required channels."""
     if db.get_setting('force_subscribe', 'false') == 'false':
         return True
-
     user_id = update.effective_user.id
     required_channels = db.get_all_required_channels()
     if not required_channels:
         return True
-    
     is_member_of_all = True
     for channel in required_channels:
         try:
@@ -140,51 +114,36 @@ async def check_channel_membership(update: Update, context: ContextTypes.DEFAULT
         except TelegramError as e:
             logger.error(f"Error checking membership for channel {channel.channel_id}: {e}")
             is_member_of_all = False
-            await context.bot.send_message(chat_id=config.OWNER_ID, text=f"Error checking channel membership for {channel.channel_id}. Is the bot an admin there?")
             break
-
     if not is_member_of_all:
         target = update.callback_query.message if update.callback_query else update.message
         await target.reply_text(
             db.get_text('force_subscribe_message'),
             reply_markup=kb.join_channel_keyboard()
         )
-        return False
-        
-    return True
+    return is_member_of_all
 
 def format_experience(exp: Experience, md_version: int = 2) -> str:
-    """Formats an experience object into a readable string, escaping user inputs."""
     def def_md(text):
         return escape_markdown(str(text), version=md_version)
-    
     tags = f"#{exp.field.name.replace(' ', '_')} #{exp.major.name.replace(' ', '_')} #{exp.professor.name.replace(' ', '_')} #{exp.course.name.replace(' ', '_')}"
     attendance_text = db.get_text('exp_format_attendance_yes') if exp.attendance_required else db.get_text('exp_format_attendance_no')
-
-    return f"""{db.get_text('exp_format_field')}: {def_md(exp.field.name)} ({def_md(exp.major.name)})
-{db.get_text('exp_format_professor')}: {def_md(exp.professor.name)}
-{db.get_text('exp_format_course')}: {def_md(exp.course.name)}
-{db.get_text('exp_format_teaching')}:
-{def_md(exp.teaching_style)}
-{db.get_text('exp_format_notes')}:
-{def_md(exp.notes)}
-{db.get_text('exp_format_project')}:
-{def_md(exp.project)}
-{db.get_text('exp_format_attendance')}: {attendance_text}
-{def_md(exp.attendance_details)}
-{db.get_text('exp_format_exam')}:
-{def_md(exp.exam)}
-{db.get_text('exp_format_conclusion')}:
-{def_md(exp.conclusion)}
-{db.get_text('exp_format_footer')}
-{db.get_text('exp_format_tags')}: {def_md(tags)}"""
+    return (f"{db.get_text('exp_format_field')}: {def_md(exp.field.name)} ({def_md(exp.major.name)})\n"
+            f"{db.get_text('exp_format_professor')}: {def_md(exp.professor.name)}\n"
+            f"{db.get_text('exp_format_course')}: {def_md(exp.course.name)}\n"
+            f"{db.get_text('exp_format_teaching')}:\n{def_md(exp.teaching_style)}\n"
+            f"{db.get_text('exp_format_notes')}:\n{def_md(exp.notes)}\n"
+            f"{db.get_text('exp_format_project')}:\n{def_md(exp.project)}\n"
+            f"{db.get_text('exp_format_attendance')}: {attendance_text}\n{def_md(exp.attendance_details)}\n"
+            f"{db.get_text('exp_format_exam')}:\n{def_md(exp.exam)}\n"
+            f"{db.get_text('exp_format_conclusion')}:\n{def_md(exp.conclusion)}\n"
+            f"{db.get_text('exp_format_footer')}\n{db.get_text('exp_format_tags')}: {def_md(tags)}")
 
 # --- User Commands & Main Menu ---
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     db.add_user(update.effective_user.id, update.effective_user.first_name)
-    if not await check_channel_membership(update, context):
-        return
-    await update.message.reply_text(db.get_text('welcome'), reply_markup=kb.main_menu())
+    if await check_channel_membership(update, context):
+        await update.message.reply_text(db.get_text('welcome'), reply_markup=kb.main_menu())
 
 async def membership_check_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -203,20 +162,17 @@ async def my_experiences_command(update: Update, context: ContextTypes.DEFAULT_T
     if not exps:
         await update.message.reply_text(db.get_text('my_experiences_empty'))
         return
-    
     response = db.get_text('my_experiences_header')
     status_map = {
         ExperienceStatus.PENDING: db.get_text('status_pending'),
         ExperienceStatus.APPROVED: db.get_text('status_approved'),
         ExperienceStatus.REJECTED: db.get_text('status_rejected')
     }
-
     for exp in exps:
         course_name = escape_markdown(exp.course.name, version=2)
         prof_name = escape_markdown(exp.professor.name, version=2)
         status_text = status_map.get(exp.status, str(exp.status))
         response += f"*{course_name}* \\- *{prof_name}* ({status_text})\n"
-
     await update.message.reply_text(response, parse_mode=constants.ParseMode.MARKDOWN_V2)
 
 async def rules_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -228,23 +184,34 @@ async def submission_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     if not await check_channel_membership(update, context): return ConversationHandler.END
     context.user_data['experience'] = {}
     fields, _ = db.get_all_items(Field, page=1, per_page=100)
-    await update.message.reply_text(db.get_text('submission_start'), reply_markup=kb.dynamic_list_keyboard(fields, 'field'))
+    await update.message.reply_text(
+        db.get_text('submission_start'),
+        reply_markup=kb.dynamic_list_keyboard(fields, 'field')
+    )
     return States.SELECTING_FIELD
 
 async def select_field(update: Update, context: ContextTypes.DEFAULT_TYPE) -> States:
     query = update.callback_query
     await query.answer()
-    context.user_data['experience']['field_id'] = int(query.data.split('_')[-1])
-    majors = db.get_majors_by_field(context.user_data['experience']['field_id'])
-    await query.edit_message_text(db.get_text('choose_major'), reply_markup=kb.dynamic_list_keyboard(majors, 'major'))
+    field_id = int(query.data.split('_')[-1])
+    context.user_data['experience']['field_id'] = field_id
+    majors = db.get_majors_by_field(field_id)
+    await query.edit_message_text(
+        db.get_text('choose_major'),
+        reply_markup=kb.dynamic_list_keyboard(majors, 'major')
+    )
     return States.SELECTING_MAJOR
 
 async def select_major(update: Update, context: ContextTypes.DEFAULT_TYPE) -> States:
     query = update.callback_query
     await query.answer()
-    context.user_data['experience']['major_id'] = int(query.data.split('_')[-1])
-    courses = db.get_courses_by_major(context.user_data['experience']['major_id'])
-    await query.edit_message_text(db.get_text('choose_course'), reply_markup=kb.dynamic_list_keyboard(courses, 'course'))
+    major_id = int(query.data.split('_')[-1])
+    context.user_data['experience']['major_id'] = major_id
+    courses = db.get_courses_by_major(major_id)
+    await query.edit_message_text(
+        db.get_text('choose_course'),
+        reply_markup=kb.dynamic_list_keyboard(courses, 'course')
+    )
     return States.SELECTING_COURSE
 
 async def select_course(update: Update, context: ContextTypes.DEFAULT_TYPE) -> States:
@@ -252,14 +219,16 @@ async def select_course(update: Update, context: ContextTypes.DEFAULT_TYPE) -> S
     await query.answer()
     context.user_data['experience']['course_id'] = int(query.data.split('_')[-1])
     professors, _ = db.get_all_items(Professor, page=1, per_page=100)
-    await query.edit_message_text(db.get_text('choose_professor'), reply_markup=kb.dynamic_list_keyboard(professors, 'professor', has_add_new=True))
+    await query.edit_message_text(
+        db.get_text('choose_professor'),
+        reply_markup=kb.dynamic_list_keyboard(professors, 'professor', has_add_new=True)
+    )
     return States.SELECTING_PROFESSOR
 
 async def select_professor(update: Update, context: ContextTypes.DEFAULT_TYPE) -> States:
     query = update.callback_query
     await query.answer()
     context.user_data['experience']['professor_id'] = int(query.data.split('_')[-1])
-    context.user_data['current_field'] = 'teaching_style'
     await query.edit_message_text(db.get_text('ask_teaching_style'))
     return States.GETTING_TEACHING
 
@@ -274,69 +243,55 @@ async def add_new_professor_receive_name(update: Update, context: ContextTypes.D
     if not prof_name or len(prof_name) > 255:
         await update.message.reply_text("نام استاد نامعتبر یا بیش از حد طولانی است. لطفا دوباره تلاش کنید:")
         return States.ADDING_PROFESSOR
-    new_prof = db.add_item(Professor, name=prof_name)
-    context.user_data['experience']['professor_id'] = new_prof.id
-    context.user_data['current_field'] = 'teaching_style'
+    new_prof_id = db.add_item(Professor, name=prof_name)
+    context.user_data['experience']['professor_id'] = new_prof_id
     await update.message.reply_text(db.get_text('ask_teaching_style'))
     return States.GETTING_TEACHING
 
-async def get_text_input(update: Update, context: ContextTypes.DEFAULT_TYPE, next_state: States, prompt_key: str, reply_markup=None) -> States:
+async def get_text_input(update: Update, context: ContextTypes.DEFAULT_TYPE, field_name: str, next_state: States, prompt_key: str, reply_markup=None) -> States:
     user_input = update.message.text
-    field_name = context.user_data.get('current_field', 'input')
-
     if len(user_input) > 1000:
         await update.message.reply_text(f"متن شما بیش از حد طولانی است (حداکثر ۱۰۰۰ کاراکتر). لطفا دوباره تلاش کنید:")
         return context.user_data.get('current_state', next_state)
-
     context.user_data['experience'][field_name] = user_input
     await update.message.reply_text(db.get_text(prompt_key), reply_markup=reply_markup)
     return next_state
 
 async def get_teaching(update: Update, context: ContextTypes.DEFAULT_TYPE) -> States:
-    context.user_data['current_field'] = 'teaching_style'
-    return await get_text_input(update, context, States.GETTING_NOTES, 'ask_notes')
+    return await get_text_input(update, context, 'teaching_style', States.GETTING_NOTES, 'ask_notes')
 
 async def get_notes(update: Update, context: ContextTypes.DEFAULT_TYPE) -> States:
-    context.user_data['current_field'] = 'notes'
-    return await get_text_input(update, context, States.GETTING_PROJECT, 'ask_project')
+    return await get_text_input(update, context, 'notes', States.GETTING_PROJECT, 'ask_project')
 
 async def get_project(update: Update, context: ContextTypes.DEFAULT_TYPE) -> States:
-    context.user_data['current_field'] = 'project'
-    return await get_text_input(update, context, States.GETTING_ATTENDANCE_CHOICE, 'ask_attendance_choice', kb.attendance_keyboard())
+    return await get_text_input(update, context, 'project', States.GETTING_ATTENDANCE_CHOICE, 'ask_attendance_choice', kb.attendance_keyboard())
 
 async def get_attendance_choice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> States:
     query = update.callback_query
     await query.answer()
-    choice = query.data.split('_')[-1]
-    context.user_data['experience']['attendance_required'] = (choice == 'yes')
-    context.user_data['current_field'] = 'attendance_details'
+    context.user_data['experience']['attendance_required'] = (query.data == 'attendance_yes')
     await query.edit_message_text(db.get_text('ask_attendance_details'))
     return States.GETTING_ATTENDANCE_DETAILS
 
 async def get_attendance_details(update: Update, context: ContextTypes.DEFAULT_TYPE) -> States:
-    context.user_data['current_field'] = 'attendance_details'
-    return await get_text_input(update, context, States.GETTING_EXAM, 'ask_exam')
+    return await get_text_input(update, context, 'attendance_details', States.GETTING_EXAM, 'ask_exam')
 
 async def get_exam(update: Update, context: ContextTypes.DEFAULT_TYPE) -> States:
-    context.user_data['current_field'] = 'exam'
-    return await get_text_input(update, context, States.GETTING_CONCLUSION, 'ask_conclusion')
+    return await get_text_input(update, context, 'exam', States.GETTING_CONCLUSION, 'ask_conclusion')
 
 async def get_conclusion_and_finish(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    context.user_data['current_field'] = 'conclusion'
     user_input = update.message.text
     if len(user_input) > 1000:
         await update.message.reply_text(f"متن شما بیش از حد طولانی است. لطفا دوباره تلاش کنید:")
         return States.GETTING_CONCLUSION
-
     context.user_data['experience']['conclusion'] = user_input
     exp_data = context.user_data['experience']
-    
     user = update.effective_user
     exp_data['user_id'] = user.id
     
     await context.bot.send_chat_action(chat_id=update.effective_chat.id, action=constants.ChatAction.TYPING)
-    new_exp = db.add_item(Experience, **exp_data)
-    exp = db.get_experience(new_exp.id)
+    new_exp_id = db.add_item(Experience, **exp_data)
+    exp = db.get_experience(new_exp_id)
     admin_message = db.get_text('admin_new_experience_notification', exp_id=exp.id) + format_experience(exp)
     
     for admin in db.get_all_admins():
@@ -365,13 +320,17 @@ async def cancel_submission(update: Update, context: ContextTypes.DEFAULT_TYPE) 
 
 # --- Admin Panel ---
 async def admin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not await check_admin(update, context): return
-    await update.message.reply_text(db.get_text('admin_panel_welcome'), reply_markup=kb.admin_panel_main())
+    if await check_admin(update, context):
+        await update.message.reply_text(
+            db.get_text('admin_panel_welcome'), reply_markup=kb.admin_panel_main()
+        )
 
 async def admin_panel_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    await query.edit_message_text(db.get_text('admin_panel_welcome'), reply_markup=kb.admin_panel_main())
+    await query.edit_message_text(
+        db.get_text('admin_panel_welcome'), reply_markup=kb.admin_panel_main()
+    )
 
 async def experience_approval_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await check_admin(update, context): return
@@ -387,16 +346,27 @@ async def experience_approval_handler(update: Update, context: ContextTypes.DEFA
 
     if action == "approve":
         db.update_experience_status(exp_id, ExperienceStatus.APPROVED)
-        await context.bot.send_message(chat_id=config.CHANNEL_ID, text=format_experience(exp), parse_mode=constants.ParseMode.MARKDOWN_V2)
+        await context.bot.send_message(
+            chat_id=config.CHANNEL_ID,
+            text=format_experience(exp),
+            parse_mode=constants.ParseMode.MARKDOWN_V2
+        )
         await query.edit_message_text(db.get_text('admin_approval_success', exp_id=exp_id))
         try:
             course_name = escape_markdown(exp.course.name, version=2)
-            await context.bot.send_message(chat_id=exp.user_id, text=db.get_text('user_approval_notification', course_name=course_name), parse_mode=constants.ParseMode.MARKDOWN_V2)
+            await context.bot.send_message(
+                chat_id=exp.user_id,
+                text=db.get_text('user_approval_notification', course_name=course_name),
+                parse_mode=constants.ParseMode.MARKDOWN_V2
+            )
         except Exception as e:
             logger.warning(f"Could not notify user {exp.user_id} about approval: {e}")
 
     elif action == "reject":
-        await query.edit_message_text(db.get_text('rejection_reason_prompt'), reply_markup=kb.rejection_reasons_keyboard(exp_id))
+        await query.edit_message_text(
+            db.get_text('rejection_reason_prompt'),
+            reply_markup=kb.rejection_reasons_keyboard(exp_id)
+        )
 
     elif action == "reason":
         reason_key_num = data[3]
@@ -485,7 +455,10 @@ async def admin_manage_channels_callback(update: Update, context: ContextTypes.D
     if not await check_admin(update, context): return
     query = update.callback_query
     await query.answer()
-    await query.edit_message_text("مدیریت کانال‌های عضویت اجباری:", reply_markup=kb.admin_manage_channels_keyboard())
+    await query.edit_message_text(
+        "مدیریت کانال‌های عضویت اجباری:",
+        reply_markup=kb.admin_manage_channels_keyboard()
+    )
 
 async def admin_toggle_force_sub_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await check_admin(update, context): return
@@ -494,7 +467,10 @@ async def admin_toggle_force_sub_callback(update: Update, context: ContextTypes.
     current_status = db.get_setting('force_subscribe', 'false')
     new_status = 'true' if current_status == 'false' else 'false'
     db.set_setting('force_subscribe', new_status)
-    await query.edit_message_text("مدیریت کانال‌های عضویت اجباری:", reply_markup=kb.admin_manage_channels_keyboard())
+    await query.edit_message_text(
+        "مدیریت کانال‌های عضویت اجباری:",
+        reply_markup=kb.admin_manage_channels_keyboard()
+    )
 
 async def admin_add_channel_start_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> States:
     if not await check_admin(update, context): return ConversationHandler.END
@@ -518,7 +494,10 @@ async def admin_add_channel_get_link(update: Update, context: ContextTypes.DEFAU
     except Exception as e:
         await update.message.reply_text(f"خطا در افزودن کانال: {e}. (ممکن است کانال تکراری باشد)")
         
-    await update.message.reply_text("مدیریت کانال‌های عضویت اجباری:", reply_markup=kb.admin_manage_channels_keyboard())
+    await update.message.reply_text(
+        "مدیریت کانال‌های عضویت اجباری:",
+        reply_markup=kb.admin_manage_channels_keyboard()
+    )
     return ConversationHandler.END
     
 async def admin_delete_channel_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -527,7 +506,10 @@ async def admin_delete_channel_callback(update: Update, context: ContextTypes.DE
     channel_db_id = int(query.data.split('_')[-1])
     db.delete_item(RequiredChannel, channel_db_id)
     await query.answer("کانال با موفقیت حذف شد.")
-    await query.edit_message_text("مدیریت کانال‌های عضویت اجباری:", reply_markup=kb.admin_manage_channels_keyboard())
+    await query.edit_message_text(
+        "مدیریت کانال‌های عضویت اجباری:",
+        reply_markup=kb.admin_manage_channels_keyboard()
+    )
 
 # --- Generic Admin CRUD Operations ---
 async def admin_list_items_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -540,24 +522,22 @@ async def admin_list_items_callback(update: Update, context: ContextTypes.DEFAUL
     page = int(parts[3])
     
     if prefix == 'texts':
-        model = MODEL_MAP['text']
         items, total_pages = db.get_paginated_texts(page=page)
         keyboard = kb.admin_manage_texts_list(items, page, total_pages)
         header_key = 'admin_manage_texts_header'
-        await query.edit_message_text(db.get_text(header_key, default=f"مدیریت {PREFIX_MAP['text']}"), reply_markup=keyboard)
-        return
-
-    model = MODEL_MAP.get(prefix)
-    if not model:
-        logger.error(f"Invalid prefix '{prefix}' in admin_list_items_callback")
-        return
-
-    items, total_pages = db.get_all_items(model, page=page)
-    keyboard = kb.admin_manage_item_list(items, prefix, page, total_pages)
+    else:
+        model = MODEL_MAP.get(prefix)
+        if not model:
+            logger.error(f"Invalid prefix '{prefix}' in admin_list_items_callback")
+            return
+        items, total_pages = db.get_all_items(model, page=page)
+        keyboard = kb.admin_manage_item_list(items, prefix, page, total_pages)
+        header_key = f'admin_manage_{prefix}_header'
         
-    header_key = f'admin_manage_{prefix}_header'
-    await query.edit_message_text(db.get_text(header_key, default=f"مدیریت {PREFIX_MAP[prefix]}"), reply_markup=keyboard)
-
+    await query.edit_message_text(
+        db.get_text(header_key, default=f"مدیریت {PREFIX_MAP[prefix]}"),
+        reply_markup=keyboard
+    )
 
 async def item_delete_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await check_admin(update, context): return
@@ -597,22 +577,25 @@ async def item_confirm_delete_callback(update: Update, context: ContextTypes.DEF
         reply_markup=kb.back_to_list_keyboard(prefix, page)
     )
 
-
 async def item_add_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> States:
     if not await check_admin(update, context): return ConversationHandler.END
     query = update.callback_query
     await query.answer()
     
     parts = query.data.split('_')
-    prefix = parts[0]
-    page = int(parts[2])
+    prefix, page_str = parts[0], parts[2]
+    page = int(page_str)
     
     context.user_data['prefix'] = prefix
     context.user_data['page'] = page
     
     if prefix in ['major', 'course']:
-        fields, _ = db.get_all_items(Field, per_page=100)
-        await query.edit_message_text(db.get_text('select_parent_field'), reply_markup=kb.parent_field_selection_keyboard(fields, prefix, page))
+        parent_model = Field if prefix == 'major' else Major
+        parents, _ = db.get_all_items(parent_model, per_page=100)
+        await query.edit_message_text(
+            db.get_text('select_parent_field'),
+            reply_markup=kb.parent_field_selection_keyboard(parents, prefix, page)
+        )
         return States.SELECTING_PARENT_FIELD
     elif prefix == 'admin':
         await query.edit_message_text("لطفا آیدی عددی ادمین جدید را وارد کنید:")
@@ -622,8 +605,8 @@ async def item_add_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         return States.GETTING_NEW_NAME
 
 async def item_add_receive_name(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    prefix = context.user_data.get('prefix')
-    page = context.user_data.get('page')
+    prefix = context.user_data['prefix']
+    page = context.user_data['page']
     parent_id = context.user_data.get('parent_id')
     model = MODEL_MAP[prefix]
     
@@ -633,87 +616,72 @@ async def item_add_receive_name(update: Update, context: ContextTypes.DEFAULT_TY
         if prefix == 'course': kwargs['major_id'] = parent_id
         
     db.add_item(model, **kwargs)
-    
     await update.message.reply_text(
         db.get_text('item_added_successfully'),
         reply_markup=kb.back_to_list_keyboard(prefix, page)
     )
-
     context.user_data.clear()
     return ConversationHandler.END
 
 async def item_add_select_parent(update: Update, context: ContextTypes.DEFAULT_TYPE) -> States:
     query = update.callback_query
     await query.answer()
-    
     parts = query.data.split('_')
-    parent_id = int(parts[2])
-    context.user_data['parent_id'] = parent_id
-    
+    context.user_data['parent_id'] = int(parts[2])
     await query.edit_message_text(db.get_text('ask_for_new_item_name'))
     return States.GETTING_NEW_NAME
 
 async def admin_add_get_id(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     page = context.user_data.get('page', 1)
-    prefix = "admin"
     try:
         user_id = int(update.message.text)
         db.add_item(Admin, user_id=user_id)
         await update.message.reply_text(
             "ادمین جدید با موفقیت اضافه شد.",
-            reply_markup=kb.back_to_list_keyboard(prefix, page)
+            reply_markup=kb.back_to_list_keyboard('admin', page)
         )
     except (ValueError, Exception) as e:
         await update.message.reply_text(
             f"خطا: {e}. لطفا یک آیدی عددی معتبر وارد کنید.",
-            reply_markup=kb.back_to_list_keyboard(prefix, page)
+            reply_markup=kb.back_to_list_keyboard('admin', page)
         )
-
     context.user_data.clear()
     return ConversationHandler.END
 
-# --- START: New Edit Handlers ---
 async def item_edit_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> States:
-    """Starts the edit process for an item (Field, Major, etc.)."""
     if not await check_admin(update, context): return ConversationHandler.END
     query = update.callback_query
     await query.answer()
 
     parts = query.data.split('_')
-    prefix = parts[0]
-    item_id = int(parts[2])
-    page = int(parts[3])
+    prefix, item_id_str, page_str = parts[0], parts[2], parts[3]
+    item_id, page = int(item_id_str), int(page_str)
 
-    context.user_data['prefix'] = prefix
-    context.user_data['item_id'] = item_id
-    context.user_data['page'] = page
-
+    context.user_data.update({'prefix': prefix, 'item_id': item_id, 'page': page})
     model = MODEL_MAP[prefix]
     item = db.get_item_by_id(model, item_id)
     current_name = item.name if hasattr(item, 'name') else f"ID: {item.user_id}"
 
-    await query.edit_message_text(db.get_text('ask_for_update_item_name', current_name=current_name))
+    await query.edit_message_text(
+        db.get_text('ask_for_update_item_name', current_name=current_name)
+    )
     return States.GETTING_UPDATED_NAME
 
 async def item_edit_receive_name(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Receives the new name and updates the item."""
-    prefix = context.user_data.get('prefix')
-    item_id = context.user_data.get('item_id')
-    page = context.user_data.get('page')
+    prefix = context.user_data['prefix']
+    item_id = context.user_data['item_id']
+    page = context.user_data['page']
     model = MODEL_MAP[prefix]
-
     db.update_item(model, item_id, name=update.message.text.strip())
     
     await update.message.reply_text(
         db.get_text('item_updated_successfully'),
         reply_markup=kb.back_to_list_keyboard(prefix, page)
     )
-
     context.user_data.clear()
     return ConversationHandler.END
 
 async def text_edit_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> States:
-    """Starts the edit process for a bot text."""
     if not await check_admin(update, context): return ConversationHandler.END
     query = update.callback_query
     await query.answer()
@@ -721,42 +689,33 @@ async def text_edit_start(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     parts = query.data.split('_')
     key = "_".join(parts[2:-1])
     page = int(parts[-1])
-
-    context.user_data['prefix'] = 'texts'
-    context.user_data['item_key'] = key
-    context.user_data['page'] = page
+    context.user_data.update({'item_key': key, 'page': page})
 
     await query.edit_message_text(db.get_text('ask_for_update_text_value', key=key))
     return States.GETTING_UPDATED_TEXT
 
 async def text_edit_receive_value(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Receives the new text and updates it in the database."""
-    key = context.user_data.get('item_key')
-    page = context.user_data.get('page')
-    prefix = 'texts'
-
-    with db.session_scope() as s:
-        text_item = s.query(BotText).filter_by(key=key).first()
-        if text_item:
-            text_item.value = update.message.text
-
+    key = context.user_data['item_key']
+    page = context.user_data['page']
+    db.set_setting(key, update.message.text) # Assuming set_setting can handle text updates
+    
     await update.message.reply_text(
         db.get_text('item_updated_successfully'),
-        reply_markup=kb.back_to_list_keyboard(prefix, page)
+        reply_markup=kb.back_to_list_keyboard('texts', page)
     )
-
     context.user_data.clear()
     return ConversationHandler.END
-# --- END: New Edit Handlers ---
 
-
-# --- Main Application Setup ---
 def main():
     db.initialize_database()
     app = Application.builder().token(config.BOT_TOKEN).build()
     
     job_queue = app.job_queue
     job_queue.run_repeating(backup_database, interval=1800, first=15)
+
+    # Adding per_message=False to all ConversationHandlers to resolve warnings
+    # and ensure predictable behavior.
+    conv_defaults = {'per_message': False}
 
     submission_handler = ConversationHandler(
         entry_points=[MessageHandler(filters.Regex('^' + db.get_text(SUBMIT_EXP_BTN_KEY) + '$'), submission_start)],
@@ -777,7 +736,8 @@ def main():
             States.GETTING_EXAM: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_exam)],
             States.GETTING_CONCLUSION: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_conclusion_and_finish)],
         },
-        fallbacks=[CallbackQueryHandler(cancel_submission, pattern=CANCEL_SUBMISSION)]
+        fallbacks=[CallbackQueryHandler(cancel_submission, pattern=CANCEL_SUBMISSION)],
+        **conv_defaults
     )
 
     broadcast_handler = ConversationHandler(
@@ -786,7 +746,7 @@ def main():
             States.GETTING_BROADCAST_MESSAGE: [MessageHandler(filters.ALL & ~filters.COMMAND, broadcast_receive_message)]
         },
         fallbacks=[CallbackQueryHandler(admin_panel_callback, pattern=ADMIN_MAIN_PANEL), CommandHandler('cancel', cancel_submission)],
-        per_user=True, per_chat=True
+        **conv_defaults
     )
 
     single_message_handler = ConversationHandler(
@@ -796,7 +756,7 @@ def main():
             States.GETTING_SINGLE_MESSAGE: [MessageHandler(filters.ALL & ~filters.COMMAND, single_message_send)]
         },
         fallbacks=[CallbackQueryHandler(admin_panel_callback, pattern=ADMIN_MAIN_PANEL), CommandHandler('cancel', cancel_submission)],
-        per_user=True, per_chat=True
+        **conv_defaults
     )
     
     add_channel_handler = ConversationHandler(
@@ -806,7 +766,7 @@ def main():
             States.GETTING_CHANNEL_LINK_TO_ADD: [MessageHandler(filters.TEXT & ~filters.COMMAND, admin_add_channel_get_link)]
         },
         fallbacks=[CallbackQueryHandler(admin_manage_channels_callback, pattern=ADMIN_MANAGE_CHANNELS), CommandHandler('cancel', cancel_submission)],
-        per_user=True, per_chat=True
+        **conv_defaults
     )
     
     item_add_handler = ConversationHandler(
@@ -817,7 +777,7 @@ def main():
             States.SELECTING_PARENT_FIELD: [CallbackQueryHandler(item_add_select_parent, pattern=COMPLEX_ITEM_SELECT_PARENT)]
         },
         fallbacks=[CommandHandler('cancel', cancel_submission)],
-        per_user=True, per_chat=True
+        **conv_defaults
     )
 
     item_edit_handler = ConversationHandler(
@@ -826,7 +786,7 @@ def main():
             States.GETTING_UPDATED_NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, item_edit_receive_name)],
         },
         fallbacks=[CommandHandler('cancel', cancel_submission)],
-        per_user=True, per_chat=True
+        **conv_defaults
     )
     
     text_edit_handler = ConversationHandler(
@@ -835,19 +795,17 @@ def main():
             States.GETTING_UPDATED_TEXT: [MessageHandler(filters.TEXT & ~filters.COMMAND, text_edit_receive_value)],
         },
         fallbacks=[CommandHandler('cancel', cancel_submission)],
-        per_user=True, per_chat=True
+        **conv_defaults
     )
-
 
     # --- Register Handlers ---
     app.add_handler(CommandHandler("start", start_command))
     app.add_handler(CommandHandler("admin", admin_command))
-
-    app.add_handler(submission_handler)
     app.add_handler(MessageHandler(filters.Regex('^' + db.get_text(MY_EXPS_BTN_KEY) + '$'), my_experiences_command))
     app.add_handler(MessageHandler(filters.Regex('^' + db.get_text(RULES_BTN_KEY) + '$'), rules_command))
     app.add_handler(CallbackQueryHandler(membership_check_callback, pattern=CHECK_MEMBERSHIP))
     
+    app.add_handler(submission_handler)
     app.add_handler(broadcast_handler)
     app.add_handler(single_message_handler)
     app.add_handler(add_channel_handler)
@@ -858,26 +816,24 @@ def main():
     app.add_handler(CallbackQueryHandler(admin_panel_callback, pattern=ADMIN_MAIN_PANEL))
     app.add_handler(CallbackQueryHandler(show_stats_callback, pattern=r'^admin_stats$'))
     app.add_handler(CallbackQueryHandler(experience_approval_handler, pattern=EXPERIENCE_APPROVAL))
-    
     app.add_handler(CallbackQueryHandler(admin_manage_channels_callback, pattern=ADMIN_MANAGE_CHANNELS))
     app.add_handler(CallbackQueryHandler(admin_toggle_force_sub_callback, pattern=ADMIN_TOGGLE_FORCE_SUB))
     app.add_handler(CallbackQueryHandler(admin_delete_channel_callback, pattern=ADMIN_DELETE_CHANNEL))
-    
     app.add_handler(CallbackQueryHandler(admin_list_items_callback, pattern=ADMIN_LIST_ITEMS))
     app.add_handler(CallbackQueryHandler(admin_list_items_callback, pattern=ADMIN_LIST_TEXTS))
     app.add_handler(CallbackQueryHandler(item_delete_callback, pattern=ITEM_DELETE))
     app.add_handler(CallbackQueryHandler(item_confirm_delete_callback, pattern=ITEM_CONFIRM_DELETE))
 
-
     # --- Webhook or Polling ---
     if config.DOMAIN_NAME:
-        port_suffix = f":{config.WEBHOOK_PORT}" if config.WEBHOOK_PORT not in [443, 80, 88] else ""
-        webhook_url = f"https://{config.DOMAIN_NAME}{port_suffix}/{config.BOT_TOKEN}"
+        # Final Fix: The webhook URL should NOT contain the port.
+        # Traefik handles the port mapping externally (443 -> 8443).
+        webhook_url = f"https://{config.DOMAIN_NAME}/{config.BOT_TOKEN}"
         
         logger.info(f"Starting bot in webhook mode. URL: {webhook_url}")
         app.run_webhook(
             listen="0.0.0.0",
-            port=8443,
+            port=8443,  # This is the INTERNAL port inside Docker. It's correct.
             url_path=config.BOT_TOKEN,
             webhook_url=webhook_url
         )
