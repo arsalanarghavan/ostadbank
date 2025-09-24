@@ -4,7 +4,6 @@ services:
     container_name: "traefik"
     restart: always
     command:
-      # --- این بخش برای استفاده از روش DNS است و ۱۰۰٪ صحیح است ---
       - "--api.insecure=true"
       - "--providers.docker=true"
       - "--providers.docker.exposedbydefault=false"
@@ -22,7 +21,7 @@ services:
     volumes:
       - "/var/run/docker.sock:/var/run/docker.sock:ro"
       - "letsencrypt_data:/letsencrypt"
-    networks: # <--- بخش جدید برای حل مشکل شبکه
+    networks:
       - ostadbank_net
 
   app:
@@ -40,8 +39,8 @@ services:
       - "traefik.http.routers.ostadbank.entrypoints=websecure"
       - "traefik.http.routers.ostadbank.tls.certresolver=myresolver"
       - "traefik.http.services.ostadbank.loadbalancer.server.port=8443"
-      - "traefik.docker.network=ostadbank_net" # <--- بخش جدید برای حل مشکل شبکه
-    networks: # <--- بخش جدید برای حل مشکل شبکه
+      - "traefik.docker.network=ostadbank_net"
+    networks:
       - ostadbank_net
 
   db:
@@ -60,13 +59,13 @@ services:
       MYSQL_PASSWORD: ${DB_PASSWORD}
     volumes:
       - "mariadb_data:/var/lib/mysql"
-    networks: # <--- بخش جدید برای حل مشکل شبکه
+    networks:
       - ostadbank_net
 
 volumes:
   mariadb_data:
   letsencrypt_data:
 
-networks: # <--- بخش جدید برای حل مشکل شبکه
+networks:
   ostadbank_net:
     driver: bridge
