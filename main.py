@@ -673,16 +673,12 @@ ptb_app.add_handler(CallbackQueryHandler(item_confirm_delete_callback, pattern=I
 async def on_startup(application: Application):
     """کارهایی که در زمان شروع به کار ربات باید انجام شود"""
     application.job_queue.run_repeating(backup_database, interval=1800, first=15)
-    webhook_url = f"https://{config.DOMAIN_NAME}/{config.BOT_TOKEN}"
-    await application.bot.set_webhook(
-        url=webhook_url,
-        allowed_updates=Update.ALL_TYPES
-    )
-    logger.info(f"Webhook has been set to: {webhook_url}")
+    logger.info("Bot application is ready to receive webhooks.")
 
 async def on_shutdown(application: Application):
     """کارهایی که در زمان خاموش شدن ربات باید انجام شود"""
     logger.info("Bot is shutting down...")
+
 
 # ۴. اتصال توابع شروع و پایان به برنامه
 ptb_app.post_init = on_startup
