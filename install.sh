@@ -21,16 +21,20 @@ fi
 
 if ! command -v docker-compose &> /dev/null; then
     echo "🧩 Docker Compose not found. Installing Docker Compose..."
-    apt-get update > /dev/null 2>&1 && apt-get install -y docker-compose-plugin > /dev/null 2>&1
-    if ! command -v docker-compose &> /dev/null; then
+    # First, try installing the plugin via apt, which is the modern way
+    apt-get update > /dev/null 2>&1
+    apt-get install -y docker-compose-plugin > /dev/null 2>&1
+    # If the command still doesn't exist, fall back to the manual binary download
+     if ! command -v docker-compose &> /dev/null; then
         LATEST_COMPOSE=$(curl -s https://api.github.com/repos/docker/compose/releases/latest | grep "tag_name" | cut -d'"' -f4)
         curl -L "https://github.com/docker/compose/releases/download/${LATEST_COMPOSE}/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
         chmod +x /usr/local/bin/docker-compose
-    fi
+     fi
     echo "✅ Docker Compose installed successfully."
 else
     echo "✅ Docker Compose is already installed."
 fi
+
 
 # --- Clone or update the repository ---
 if [ ! -d "/opt/ostadbank" ]; then
@@ -82,17 +86,18 @@ EOF
 
 echo "✅ .env file created successfully."
 
-# --- Build and run the containers using Docker Compose ---
-echo "🚀 Building images and running containers..."
-
-# Clean up previous failed SSL attempts if they exist
+# --- Clean up previous failed attempts and run containers ---
+echo "🚀 Stopping old containers and cleaning up..."
+docker-compose down --remove-orphans > /dev/null 2>&1
+echo "🔥 Removing old SSL cache..."
 docker volume rm ostadbank_letsencrypt_data > /dev/null 2>&1
 
+echo "🚀 Building fresh images and running containers..."
 docker-compose up -d --build
 
 # --- Final check ---
 echo "⏳ Checking the final status of the containers..."
-sleep 20 # Give Traefik some time to request the certificate via DNS
+sleep 25 # Give Traefik enough time to request the certificate via DNS
 
 if docker-compose ps | grep "Up"; then
     echo -e "\n\n🎉 **Installation completed successfully!**"

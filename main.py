@@ -697,8 +697,12 @@ async def text_edit_start(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 async def text_edit_receive_value(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     key = context.user_data['item_key']
     page = context.user_data['page']
-    db.set_setting(key, update.message.text) # Assuming set_setting can handle text updates
     
+    with db.session_scope() as s:
+        text_item = s.query(BotText).filter_by(key=key).first()
+        if text_item:
+            text_item.value = update.message.text
+            
     await update.message.reply_text(
         db.get_text('item_updated_successfully'),
         reply_markup=kb.back_to_list_keyboard('texts', page)
@@ -706,140 +710,126 @@ async def text_edit_receive_value(update: Update, context: ContextTypes.DEFAULT_
     context.user_data.clear()
     return ConversationHandler.END
 
-def main():
-    db.initialize_database()
-    app = Application.builder().token(config.BOT_TOKEN).build()
-    
-    job_queue = app.job_queue
-    job_queue.run_repeating(backup_database, interval=1800, first=15)
+# --- START: بخش نهایی و اصلاح‌شده برای اجرا ---
 
-    # Adding per_message=False to all ConversationHandlers to resolve warnings
-    # and ensure predictable behavior.
-    conv_defaults = {'per_message': False}
+# برنامه اصلی را برای Uvicorn آماده می‌کنیم
+app = Application.builder().token(config.BOT_TOKEN).build()
 
-    submission_handler = ConversationHandler(
-        entry_points=[MessageHandler(filters.Regex('^' + db.get_text(SUBMIT_EXP_BTN_KEY) + '$'), submission_start)],
-        states={
-            States.SELECTING_FIELD: [CallbackQueryHandler(select_field, pattern=FIELD_SELECT)],
-            States.SELECTING_MAJOR: [CallbackQueryHandler(select_major, pattern=MAJOR_SELECT)],
-            States.SELECTING_COURSE: [CallbackQueryHandler(select_course, pattern=COURSE_SELECT)],
-            States.SELECTING_PROFESSOR: [
-                CallbackQueryHandler(select_professor, pattern=PROFESSOR_SELECT),
-                CallbackQueryHandler(add_new_professor_start, pattern=PROFESSOR_ADD_NEW)
-            ],
-            States.ADDING_PROFESSOR: [MessageHandler(filters.TEXT & ~filters.COMMAND, add_new_professor_receive_name)],
-            States.GETTING_TEACHING: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_teaching)],
-            States.GETTING_NOTES: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_notes)],
-            States.GETTING_PROJECT: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_project)],
-            States.GETTING_ATTENDANCE_CHOICE: [CallbackQueryHandler(get_attendance_choice, pattern=ATTENDANCE_CHOICE)],
-            States.GETTING_ATTENDANCE_DETAILS: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_attendance_details)],
-            States.GETTING_EXAM: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_exam)],
-            States.GETTING_CONCLUSION: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_conclusion_and_finish)],
-        },
-        fallbacks=[CallbackQueryHandler(cancel_submission, pattern=CANCEL_SUBMISSION)],
-        **conv_defaults
+# --- Handlers ---
+conv_defaults = {'per_message': False}
+submission_handler = ConversationHandler(
+    entry_points=[MessageHandler(filters.Regex('^' + db.get_text(SUBMIT_EXP_BTN_KEY) + '$'), submission_start)],
+    states={
+        States.SELECTING_FIELD: [CallbackQueryHandler(select_field, pattern=FIELD_SELECT)],
+        States.SELECTING_MAJOR: [CallbackQueryHandler(select_major, pattern=MAJOR_SELECT)],
+        States.SELECTING_COURSE: [CallbackQueryHandler(select_course, pattern=COURSE_SELECT)],
+        States.SELECTING_PROFESSOR: [
+            CallbackQueryHandler(select_professor, pattern=PROFESSOR_SELECT),
+            CallbackQueryHandler(add_new_professor_start, pattern=PROFESSOR_ADD_NEW)
+        ],
+        States.ADDING_PROFESSOR: [MessageHandler(filters.TEXT & ~filters.COMMAND, add_new_professor_receive_name)],
+        States.GETTING_TEACHING: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_teaching)],
+        States.GETTING_NOTES: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_notes)],
+        States.GETTING_PROJECT: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_project)],
+        States.GETTING_ATTENDANCE_CHOICE: [CallbackQueryHandler(get_attendance_choice, pattern=ATTENDANCE_CHOICE)],
+        States.GETTING_ATTENDANCE_DETAILS: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_attendance_details)],
+        States.GETTING_EXAM: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_exam)],
+        States.GETTING_CONCLUSION: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_conclusion_and_finish)],
+    },
+    fallbacks=[CallbackQueryHandler(cancel_submission, pattern=CANCEL_SUBMISSION)],
+    **conv_defaults
+)
+broadcast_handler = ConversationHandler(
+    entry_points=[CallbackQueryHandler(broadcast_start_callback, pattern=r'^admin_broadcast$')],
+    states={
+        States.GETTING_BROADCAST_MESSAGE: [MessageHandler(filters.ALL & ~filters.COMMAND, broadcast_receive_message)]
+    },
+    fallbacks=[CallbackQueryHandler(admin_panel_callback, pattern=ADMIN_MAIN_PANEL), CommandHandler('cancel', cancel_submission)],
+    **conv_defaults
+)
+single_message_handler = ConversationHandler(
+    entry_points=[CallbackQueryHandler(single_message_start_callback, pattern=r'^admin_single_message$')],
+    states={
+        States.GETTING_SINGLE_USER_ID: [MessageHandler(filters.TEXT & ~filters.COMMAND, single_message_get_user)],
+        States.GETTING_SINGLE_MESSAGE: [MessageHandler(filters.ALL & ~filters.COMMAND, single_message_send)]
+    },
+    fallbacks=[CallbackQueryHandler(admin_panel_callback, pattern=ADMIN_MAIN_PANEL), CommandHandler('cancel', cancel_submission)],
+    **conv_defaults
+)
+add_channel_handler = ConversationHandler(
+    entry_points=[CallbackQueryHandler(admin_add_channel_start_callback, pattern=ADMIN_ADD_CHANNEL)],
+    states={
+        States.GETTING_CHANNEL_ID_TO_ADD: [MessageHandler(filters.TEXT & ~filters.COMMAND, admin_add_channel_get_id)],
+        States.GETTING_CHANNEL_LINK_TO_ADD: [MessageHandler(filters.TEXT & ~filters.COMMAND, admin_add_channel_get_link)]
+    },
+    fallbacks=[CallbackQueryHandler(admin_manage_channels_callback, pattern=ADMIN_MANAGE_CHANNELS), CommandHandler('cancel', cancel_submission)],
+    **conv_defaults
+)
+item_add_handler = ConversationHandler(
+    entry_points=[CallbackQueryHandler(item_add_start, pattern=ITEM_ADD), CallbackQueryHandler(item_add_start, pattern=ADMIN_ADD)],
+    states={
+        States.GETTING_NEW_NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, item_add_receive_name)],
+        States.GETTING_ADMIN_ID: [MessageHandler(filters.TEXT & ~filters.COMMAND, admin_add_get_id)],
+        States.SELECTING_PARENT_FIELD: [CallbackQueryHandler(item_add_select_parent, pattern=COMPLEX_ITEM_SELECT_PARENT)]
+    },
+    fallbacks=[CommandHandler('cancel', cancel_submission)],
+    **conv_defaults
+)
+item_edit_handler = ConversationHandler(
+    entry_points=[CallbackQueryHandler(item_edit_start, pattern=ITEM_EDIT)],
+    states={
+        States.GETTING_UPDATED_NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, item_edit_receive_name)],
+    },
+    fallbacks=[CommandHandler('cancel', cancel_submission)],
+    **conv_defaults
+)
+text_edit_handler = ConversationHandler(
+    entry_points=[CallbackQueryHandler(text_edit_start, pattern=TEXT_EDIT)],
+    states={
+        States.GETTING_UPDATED_TEXT: [MessageHandler(filters.TEXT & ~filters.COMMAND, text_edit_receive_value)],
+    },
+    fallbacks=[CommandHandler('cancel', cancel_submission)],
+    **conv_defaults
+)
+
+# --- Register Handlers ---
+app.add_handler(CommandHandler("start", start_command))
+app.add_handler(CommandHandler("admin", admin_command))
+app.add_handler(MessageHandler(filters.Regex('^' + db.get_text(MY_EXPS_BTN_KEY) + '$'), my_experiences_command))
+app.add_handler(MessageHandler(filters.Regex('^' + db.get_text(RULES_BTN_KEY) + '$'), rules_command))
+app.add_handler(CallbackQueryHandler(membership_check_callback, pattern=CHECK_MEMBERSHIP))
+app.add_handler(submission_handler)
+app.add_handler(broadcast_handler)
+app.add_handler(single_message_handler)
+app.add_handler(add_channel_handler)
+app.add_handler(item_add_handler)
+app.add_handler(item_edit_handler)
+app.add_handler(text_edit_handler)
+app.add_handler(CallbackQueryHandler(admin_panel_callback, pattern=ADMIN_MAIN_PANEL))
+app.add_handler(CallbackQueryHandler(show_stats_callback, pattern=r'^admin_stats$'))
+app.add_handler(CallbackQueryHandler(experience_approval_handler, pattern=EXPERIENCE_APPROVAL))
+app.add_handler(CallbackQueryHandler(admin_manage_channels_callback, pattern=ADMIN_MANAGE_CHANNELS))
+app.add_handler(CallbackQueryHandler(admin_toggle_force_sub_callback, pattern=ADMIN_TOGGLE_FORCE_SUB))
+app.add_handler(CallbackQueryHandler(admin_delete_channel_callback, pattern=ADMIN_DELETE_CHANNEL))
+app.add_handler(CallbackQueryHandler(admin_list_items_callback, pattern=ADMIN_LIST_ITEMS))
+app.add_handler(CallbackQueryHandler(admin_list_items_callback, pattern=ADMIN_LIST_TEXTS))
+app.add_handler(CallbackQueryHandler(item_delete_callback, pattern=ITEM_DELETE))
+app.add_handler(CallbackQueryHandler(item_confirm_delete_callback, pattern=ITEM_CONFIRM_DELETE))
+
+# --- Webhook Setup for Production ---
+async def setup_webhook(application: Application):
+    """Sets the webhook on application startup."""
+    webhook_url = f"https://{config.DOMAIN_NAME}/{config.BOT_TOKEN}"
+    await application.bot.set_webhook(
+        url=webhook_url,
+        allowed_updates=Update.ALL_TYPES
     )
+    logger.info(f"Webhook set up for URL: {webhook_url}")
 
-    broadcast_handler = ConversationHandler(
-        entry_points=[CallbackQueryHandler(broadcast_start_callback, pattern=r'^admin_broadcast$')],
-        states={
-            States.GETTING_BROADCAST_MESSAGE: [MessageHandler(filters.ALL & ~filters.COMMAND, broadcast_receive_message)]
-        },
-        fallbacks=[CallbackQueryHandler(admin_panel_callback, pattern=ADMIN_MAIN_PANEL), CommandHandler('cancel', cancel_submission)],
-        **conv_defaults
-    )
+if __name__ != "__main__":
+    # This block is executed when Uvicorn runs the application
+    app.job_queue.run_once(lambda _: db.initialize_database(), 0)
+    app.job_queue.run_repeating(backup_database, interval=1800, first=15)
+    app.post_init = setup_webhook
 
-    single_message_handler = ConversationHandler(
-        entry_points=[CallbackQueryHandler(single_message_start_callback, pattern=r'^admin_single_message$')],
-        states={
-            States.GETTING_SINGLE_USER_ID: [MessageHandler(filters.TEXT & ~filters.COMMAND, single_message_get_user)],
-            States.GETTING_SINGLE_MESSAGE: [MessageHandler(filters.ALL & ~filters.COMMAND, single_message_send)]
-        },
-        fallbacks=[CallbackQueryHandler(admin_panel_callback, pattern=ADMIN_MAIN_PANEL), CommandHandler('cancel', cancel_submission)],
-        **conv_defaults
-    )
-    
-    add_channel_handler = ConversationHandler(
-        entry_points=[CallbackQueryHandler(admin_add_channel_start_callback, pattern=ADMIN_ADD_CHANNEL)],
-        states={
-            States.GETTING_CHANNEL_ID_TO_ADD: [MessageHandler(filters.TEXT & ~filters.COMMAND, admin_add_channel_get_id)],
-            States.GETTING_CHANNEL_LINK_TO_ADD: [MessageHandler(filters.TEXT & ~filters.COMMAND, admin_add_channel_get_link)]
-        },
-        fallbacks=[CallbackQueryHandler(admin_manage_channels_callback, pattern=ADMIN_MANAGE_CHANNELS), CommandHandler('cancel', cancel_submission)],
-        **conv_defaults
-    )
-    
-    item_add_handler = ConversationHandler(
-        entry_points=[CallbackQueryHandler(item_add_start, pattern=ITEM_ADD), CallbackQueryHandler(item_add_start, pattern=ADMIN_ADD)],
-        states={
-            States.GETTING_NEW_NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, item_add_receive_name)],
-            States.GETTING_ADMIN_ID: [MessageHandler(filters.TEXT & ~filters.COMMAND, admin_add_get_id)],
-            States.SELECTING_PARENT_FIELD: [CallbackQueryHandler(item_add_select_parent, pattern=COMPLEX_ITEM_SELECT_PARENT)]
-        },
-        fallbacks=[CommandHandler('cancel', cancel_submission)],
-        **conv_defaults
-    )
-
-    item_edit_handler = ConversationHandler(
-        entry_points=[CallbackQueryHandler(item_edit_start, pattern=ITEM_EDIT)],
-        states={
-            States.GETTING_UPDATED_NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, item_edit_receive_name)],
-        },
-        fallbacks=[CommandHandler('cancel', cancel_submission)],
-        **conv_defaults
-    )
-    
-    text_edit_handler = ConversationHandler(
-        entry_points=[CallbackQueryHandler(text_edit_start, pattern=TEXT_EDIT)],
-        states={
-            States.GETTING_UPDATED_TEXT: [MessageHandler(filters.TEXT & ~filters.COMMAND, text_edit_receive_value)],
-        },
-        fallbacks=[CommandHandler('cancel', cancel_submission)],
-        **conv_defaults
-    )
-
-    # --- Register Handlers ---
-    app.add_handler(CommandHandler("start", start_command))
-    app.add_handler(CommandHandler("admin", admin_command))
-    app.add_handler(MessageHandler(filters.Regex('^' + db.get_text(MY_EXPS_BTN_KEY) + '$'), my_experiences_command))
-    app.add_handler(MessageHandler(filters.Regex('^' + db.get_text(RULES_BTN_KEY) + '$'), rules_command))
-    app.add_handler(CallbackQueryHandler(membership_check_callback, pattern=CHECK_MEMBERSHIP))
-    
-    app.add_handler(submission_handler)
-    app.add_handler(broadcast_handler)
-    app.add_handler(single_message_handler)
-    app.add_handler(add_channel_handler)
-    app.add_handler(item_add_handler)
-    app.add_handler(item_edit_handler)
-    app.add_handler(text_edit_handler)
-    
-    app.add_handler(CallbackQueryHandler(admin_panel_callback, pattern=ADMIN_MAIN_PANEL))
-    app.add_handler(CallbackQueryHandler(show_stats_callback, pattern=r'^admin_stats$'))
-    app.add_handler(CallbackQueryHandler(experience_approval_handler, pattern=EXPERIENCE_APPROVAL))
-    app.add_handler(CallbackQueryHandler(admin_manage_channels_callback, pattern=ADMIN_MANAGE_CHANNELS))
-    app.add_handler(CallbackQueryHandler(admin_toggle_force_sub_callback, pattern=ADMIN_TOGGLE_FORCE_SUB))
-    app.add_handler(CallbackQueryHandler(admin_delete_channel_callback, pattern=ADMIN_DELETE_CHANNEL))
-    app.add_handler(CallbackQueryHandler(admin_list_items_callback, pattern=ADMIN_LIST_ITEMS))
-    app.add_handler(CallbackQueryHandler(admin_list_items_callback, pattern=ADMIN_LIST_TEXTS))
-    app.add_handler(CallbackQueryHandler(item_delete_callback, pattern=ITEM_DELETE))
-    app.add_handler(CallbackQueryHandler(item_confirm_delete_callback, pattern=ITEM_CONFIRM_DELETE))
-
-    # --- Webhook or Polling ---
-    if config.DOMAIN_NAME:
-        # Final Fix: The webhook URL should NOT contain the port.
-        # Traefik handles the port mapping externally (443 -> 8443).
-        webhook_url = f"https://{config.DOMAIN_NAME}/{config.BOT_TOKEN}"
-        
-        logger.info(f"Starting bot in webhook mode. URL: {webhook_url}")
-        app.run_webhook(
-            listen="0.0.0.0",
-            port=8443,  # This is the INTERNAL port inside Docker. It's correct.
-            url_path=config.BOT_TOKEN,
-            webhook_url=webhook_url
-        )
-    else:
-        logger.info("Starting bot in polling mode...")
-        app.run_polling()
-
-if __name__ == "__main__":
-    main()
+# --- END: بخش نهایی ---
