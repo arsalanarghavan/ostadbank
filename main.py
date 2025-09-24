@@ -30,6 +30,10 @@ from constants import (
 logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# --- راه حل: دیتابیس را همینجا مقداردهی اولیه کنید ---
+db.initialize_database()
+# ---------------------------------------------------
+
 # --- مدل‌ها و پیشوندها ---
 MODEL_MAP = {
     'field': Field, 'major': Major, 'professor': Professor,
@@ -667,7 +671,6 @@ ptb_app.add_handler(CallbackQueryHandler(item_confirm_delete_callback, pattern=I
 # ۳. تعریف توابع برای زمان شروع و پایان کار برنامه
 async def on_startup(application: Application):
     """کارهایی که در زمان شروع به کار ربات باید انجام شود"""
-    db.initialize_database()
     application.job_queue.run_repeating(backup_database, interval=1800, first=15)
     webhook_url = f"https://{config.DOMAIN_NAME}/{config.BOT_TOKEN}"
     await application.bot.set_webhook(
@@ -687,4 +690,5 @@ ptb_app.post_shutdown = on_shutdown
 # ۵. ساخت "سوئیچ استارت" نهایی برای Uvicorn
 # این متغیر application همان چیزی است که Uvicorn اجرا خواهد کرد
 app = ptb_app.asgi_app
+
 # --- END: بخش نهایی ---
