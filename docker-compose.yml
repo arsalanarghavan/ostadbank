@@ -4,18 +4,24 @@ services:
     container_name: "traefik"
     restart: always
     command:
+      # --- START: بخش نهایی و صحیح برای DNS Challenge ---
       - "--api.insecure=true"
       - "--providers.docker=true"
       - "--providers.docker.exposedbydefault=false"
       - "--entrypoints.web.address=:80"
       - "--entrypoints.websecure.address=:443"
-      - "--certificatesresolvers.myresolver.acme.httpchallenge=true"
-      - "--certificatesresolvers.myresolver.acme.httpchallenge.entrypoint=web"
+      - "--certificatesresolvers.myresolver.acme.dnschallenge=true"
+      - "--certificatesresolvers.myresolver.acme.dnschallenge.provider=cloudflare"
       - "--certificatesresolvers.myresolver.acme.email=${LETSENCRYPT_EMAIL}"
       - "--certificatesresolvers.myresolver.acme.storage=/letsencrypt/acme.json"
+      # --- END: بخش نهایی ---
     ports:
+      # این پورت‌ها برای جلوگیری از تداخل با HAProxy به صورت داخلی اجرا می‌شوند
       - "127.0.0.1:8080:80"
       - "127.0.0.1:8443:443"
+    environment:
+      # این بخش، توکن کلادفلر را از فایل .env می‌خواند
+      - "CLOUDFLARE_DNS_API_TOKEN=${CLOUDFLARE_API_TOKEN}"
     volumes:
       - "/var/run/docker.sock:/var/run/docker.sock:ro"
       - "letsencrypt_data:/letsencrypt"
