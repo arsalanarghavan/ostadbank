@@ -103,12 +103,12 @@ async def check_channel_membership(update: Update, context: ContextTypes.DEFAULT
     is_member_of_all = True
     for channel in required_channels:
         try:
-            member = await context.bot.get_chat_member(chat_id=channel.channel_id, user_id=user_id)
+            member = await context.bot.get_chat_member(chat_id=channel['channel_id'], user_id=user_id)
             if member.status not in [ChatMember.MEMBER, ChatMember.ADMINISTRATOR, ChatMember.CREATOR]:
                 is_member_of_all = False
                 break
         except TelegramError as e:
-            logger.error(f"Error checking membership for channel {channel.channel_id}: {e}")
+            logger.error(f"Error checking membership for channel {channel['channel_id']}: {e}")
             is_member_of_all = False
             break
     if not is_member_of_all:
@@ -177,7 +177,7 @@ async def rules_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def submission_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> States:
     if not await check_channel_membership(update, context): return ConversationHandler.END
     context.user_data['experience'] = {}
-    fields, _ = db.get_all_items(Field, page=1, per_page=100)
+    fields, _ = db.get_paginated_list(Field, per_page=100)
     await update.message.reply_text(db.get_text('submission_start'), reply_markup=kb.dynamic_list_keyboard(fields, 'field'))
     return States.SELECTING_FIELD
 
@@ -186,7 +186,7 @@ async def select_field(update: Update, context: ContextTypes.DEFAULT_TYPE) -> St
     await query.answer()
     field_id = int(query.data.split('_')[-1])
     context.user_data['experience']['field_id'] = field_id
-    majors = db.get_majors_by_field(field_id)
+    majors = db.get_all_items_by_parent(Major, 'field_id', field_id)
     await query.edit_message_text(db.get_text('choose_major'), reply_markup=kb.dynamic_list_keyboard(majors, 'major'))
     return States.SELECTING_MAJOR
 
@@ -195,7 +195,7 @@ async def select_major(update: Update, context: ContextTypes.DEFAULT_TYPE) -> St
     await query.answer()
     major_id = int(query.data.split('_')[-1])
     context.user_data['experience']['major_id'] = major_id
-    courses = db.get_courses_by_major(major_id)
+    courses = db.get_all_items_by_parent(Course, 'major_id', major_id)
     await query.edit_message_text(db.get_text('choose_course'), reply_markup=kb.dynamic_list_keyboard(courses, 'course'))
     return States.SELECTING_COURSE
 
@@ -203,16 +203,9 @@ async def select_course(update: Update, context: ContextTypes.DEFAULT_TYPE) -> S
     query = update.callback_query
     await query.answer()
     context.user_data['experience']['course_id'] = int(query.data.split('_')[-1])
-    professors, _ = db.get_all_items(Professor, page=1, per_page=100)
+    professors, _ = db.get_paginated_list(Professor, per_page=100)
     await query.edit_message_text(db.get_text('choose_professor'), reply_markup=kb.dynamic_list_keyboard(professors, 'professor', has_add_new=True))
     return States.SELECTING_PROFESSOR
-
-async def select_professor(update: Update, context: ContextTypes.DEFAULT_TYPE) -> States:
-    query = update.callback_query
-    await query.answer()
-    context.user_data['experience']['professor_id'] = int(query.data.split('_')[-1])
-    await query.edit_message_text(db.get_text('ask_teaching_style'))
-    return States.GETTING_TEACHING
 
 async def add_new_professor_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> States:
     query = update.callback_query
@@ -454,13 +447,13 @@ async def admin_list_items_callback(update: Update, context: ContextTypes.DEFAUL
     parts = query.data.split('_')
     prefix, page = parts[2], int(parts[3])
     if prefix == 'texts':
-        items, total_pages = db.get_paginated_texts(page=page)
+        items, total_pages = db.get_paginated_list(BotText, page=page)
         keyboard = kb.admin_manage_texts_list(items, page, total_pages)
         header_key = 'admin_manage_texts_header'
     else:
         model = MODEL_MAP.get(prefix)
         if not model: return
-        items, total_pages = db.get_all_items(model, page=page)
+        items, total_pages = db.get_paginated_list(model, page=page)
         keyboard = kb.admin_manage_item_list(items, prefix, page, total_pages)
         header_key = f'admin_manage_{prefix}_header'
     await query.edit_message_text(db.get_text(header_key), reply_markup=keyboard)
@@ -472,8 +465,7 @@ async def item_delete_callback(update: Update, context: ContextTypes.DEFAULT_TYP
     parts = query.data.split('_')
     prefix, item_id, page = parts[0], int(parts[2]), int(parts[3])
     model = MODEL_MAP[prefix]
-    item = db.get_item_by_id(model, item_id)
-    item_name = item.name if hasattr(item, 'name') else f"ID: {item.user_id}"
+    item_name = db.get_item_name(model, item_id)
     await query.edit_message_text(
         db.get_text('confirm_delete', item_name=item_name),
         reply_markup=kb.confirm_delete_keyboard(prefix, item_id, page)
@@ -497,7 +489,7 @@ async def item_add_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     context.user_data.update({'prefix': prefix, 'page': page})
     if prefix in ['major', 'course']:
         parent_model = Field if prefix == 'major' else Major
-        parents, _ = db.get_all_items(parent_model, per_page=100)
+        parents, _ = db.get_paginated_list(parent_model, per_page=100)
         await query.edit_message_text(db.get_text('select_parent_field'), reply_markup=kb.parent_field_selection_keyboard(parents, prefix, page))
         return States.SELECTING_PARENT_FIELD
     elif prefix == 'admin':
@@ -542,9 +534,8 @@ async def item_edit_start(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     parts = query.data.split('_')
     prefix, item_id, page = parts[0], int(parts[2]), int(parts[3])
     context.user_data.update({'prefix': prefix, 'item_id': item_id, 'page': page})
-    item = db.get_item_by_id(MODEL_MAP[prefix], item_id)
-    current_name = item.name if hasattr(item, 'name') else f"ID: {item.user_id}"
-    await query.edit_message_text(db.get_text('ask_for_update_item_name', current_name=current_name))
+    item_name = db.get_item_name(MODEL_MAP[prefix], item_id)
+    await query.edit_message_text(db.get_text('ask_for_update_item_name', current_name=item_name))
     return States.GETTING_UPDATED_NAME
 
 async def item_edit_receive_name(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -668,27 +659,48 @@ ptb_app.add_handler(CallbackQueryHandler(admin_list_items_callback, pattern=ADMI
 ptb_app.add_handler(CallbackQueryHandler(item_delete_callback, pattern=ITEM_DELETE))
 ptb_app.add_handler(CallbackQueryHandler(item_confirm_delete_callback, pattern=ITEM_CONFIRM_DELETE))
 
-# ۳. تعریف توابع برای زمان شروع و پایان کار برنامه
-async def on_startup(application: Application):
-    """کارهایی که در زمان شروع به کار ربات باید انجام شود"""
-    application.job_queue.run_repeating(backup_database, interval=1800, first=15)
-    webhook_url = f"https://{config.DOMAIN_NAME}/{config.BOT_TOKEN}"
-    await application.bot.set_webhook(
-        url=webhook_url,
-        allowed_updates=Update.ALL_TYPES
-    )
-    logger.info(f"Webhook has been set to: {webhook_url}")
+# --- START: بخش نهایی و اصلاح‌شده برای اجرا ---
 
-async def on_shutdown(application: Application):
-    """کارهایی که در زمان خاموش شدن ربات باید انجام شود"""
-    logger.info("Bot is shutting down...")
+# کتابخانه‌های لازم برای ASGI و FastAPI را اضافه کنید
+from fastapi import FastAPI, Request, Response
+from contextlib import asynccontextmanager
 
-# ۴. اتصال توابع شروع و پایان به برنامه
-ptb_app.post_init = on_startup
-ptb_app.post_shutdown = on_shutdown
+# این تابع در زمان شروع و پایان برنامه فراخوانی می‌شود.
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """
+    تابع مدیریت چرخه حیات برنامه.
+    این تابع مسئول راه‌اندازی و خاموش کردن برنامه ptb است.
+    """
+    print("Application starting...")
+    # ptb_app را قبل از شروع سرور مقداردهی اولیه و راه‌اندازی کنید.
+    await ptb_app.initialize()
+    await ptb_app.updater.start_webhook()
+    # پس از آماده‌سازی، کنترل را به سرور Uvicorn واگذار کنید.
+    yield
+    # ptb_app را هنگام خاموش شدن سرور به درستی خاموش کنید.
+    print("Application shutting down...")
+    await ptb_app.updater.stop()
+    await ptb_app.shutdown()
 
-# ۵. ساخت "سوئیچ استارت" نهایی برای Uvicorn
-# این متغیر application همان چیزی است که Uvicorn اجرا خواهد کرد
-app = ptb_app.asgi_app
+
+# یک شیء FastAPI ایجاد کنید و تابع lifespan را به آن متصل کنید.
+app = FastAPI(lifespan=lifespan)
+
+# یک Endpoint برای دریافت وب‌هوک تلگرام ایجاد کنید.
+@app.post(f"/{config.BOT_TOKEN}")
+async def webhook_handler(request: Request):
+    """
+    این تابع وب‌هوک‌های دریافتی از تلگرام را دریافت و پردازش می‌کند.
+    """
+    update_data = await request.json()
+    update = Update.de_json(update_data, ptb_app.bot)
+    # به‌روزرسانی را به صورت غیرهمگام (asynchronously) به ptb_app منتقل کنید.
+    asyncio.create_task(ptb_app.process_update(update))
+    return Response(content="OK", status_code=200)
+
+# اگر فایل به صورت مستقیم (با polling) اجرا شود، این بخش اجرا می‌شود.
+if __name__ == "__main__":
+    asyncio.run(ptb_app.run_polling())
 
 # --- END: بخش نهایی ---
