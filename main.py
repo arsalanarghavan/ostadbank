@@ -56,7 +56,7 @@ async def backup_database(context: ContextTypes.DEFAULT_TYPE):
         # 2. Construct the mysqldump command
         # Note: No space between -p and the password is crucial
         command = (
-            f"mysqldump -h {config.DB_HOST} "
+            f"mysqldump --skip-ssl -h {config.DB_HOST} "
             f"-P {config.DB_PORT} "
             f"-u {config.DB_USER} "
             f"-p{config.DB_PASSWORD} "

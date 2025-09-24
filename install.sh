@@ -89,10 +89,31 @@ echo "🚀 Building images and running containers..."
 docker-compose pull
 docker-compose up -d --build
 
+# --- New: Wait for SSL certificate to be issued ---
+echo "⏳ Waiting for the SSL certificate to be issued..."
+MAX_TRIES=60
+SLEEP_INTERVAL=5
+count=0
+while [ $count -lt $MAX_TRIES ]; do
+  # Use curl to check for a successful HTTPS connection
+  if curl -sS -I "https://$DOMAIN_NAME" &> /dev/null; then
+    echo -e "\n✅ SSL certificate obtained successfully!"
+    break
+  fi
+  
+  echo "Still waiting... (attempt $((count + 1)) of $MAX_TRIES)"
+  sleep $SLEEP_INTERVAL
+  count=$((count + 1))
+done
+
+if [ $count -eq $MAX_TRIES ]; then
+  echo -e "\n❌ Failed to obtain SSL certificate after multiple attempts. Please check your DNS and firewall settings."
+  echo "You can check Traefik logs for more details: cd /opt/ostadbank && docker-compose logs -f traefik"
+  exit 1
+fi
+
 # --- Final check ---
 echo "⏳ Checking the final status of the containers..."
-sleep 15 # Wait a bit longer for Traefik and SSL negotiation to complete
-
 STATUS=$(docker-compose ps -q)
 
 if [ -n "$STATUS" ]; then
