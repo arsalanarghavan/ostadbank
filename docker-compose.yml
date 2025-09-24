@@ -1,6 +1,30 @@
 version: '3.8'
 
 services:
+  traefik:
+    image: "traefik:v2.10"
+    container_name: "traefik"
+    restart: always
+    command:
+      - "--api.insecure=true" # For viewing the Traefik dashboard (optional)
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.websecure.address=:443"
+      - "--certificatesresolvers.myresolver.acme.tlschallenge=true"
+      - "--certificatesresolvers.myresolver.acme.email=${LETSENCRYPT_EMAIL}"
+      - "--certificatesresolvers.myresolver.acme.storage=/letsencrypt/acme.json"
+      # Redirect all HTTP to HTTPS
+      - "--entrypoints.web.http.redirections.entrypoint.to=websecure"
+      - "--entrypoints.web.http.redirections.entrypoint.scheme=https"
+    ports:
+      - "80:80"
+      - "443:443"
+      # - "8080:8080" # Traefik Dashboard port
+    volumes:
+      - "/var/run/docker.sock:/var/run/docker.sock:ro"
+      - "letsencrypt_data:/letsencrypt"
+
   app:
     build: .
     container_name: ostadbank_bot
@@ -9,6 +33,12 @@ services:
       - .env
     depends_on:
       - db
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.ostadbank.rule=Host(`${DOMAIN_NAME}`)"
+      - "traefik.http.routers.ostadbank.entrypoints=websecure"
+      - "traefik.http.routers.ostadbank.tls.certresolver=myresolver"
+      - "traefik.http.services.ostadbank.loadbalancer.server.port=8443"
 
   db:
     image: mariadb:10.11
@@ -20,7 +50,8 @@ services:
       MYSQL_USER: ${DB_USER}
       MYSQL_PASSWORD: ${DB_PASSWORD}
     volumes:
-      - mariadb_data:/var/lib/mysql
+      - "mariadb_data:/var/lib/mysql"
 
 volumes:
   mariadb_data:
+  letsencrypt_data:

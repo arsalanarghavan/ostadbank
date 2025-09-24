@@ -2,128 +2,106 @@
 
 # --- Check for root privileges ---
 if [ "$(id -u)" -ne 0 ]; then
-  echo "❌ این اسکریپت باید با دسترسی root یا sudo اجرا شود."
+  echo "❌ This script must be run with root or sudo privileges."
   exit 1
 fi
 
-echo "🚀 شروع فرآیند نصب تمام خودکار ربات OstadBank..."
+echo "🚀 Starting the fully automated installation of OstadBank Bot using Docker..."
 
-# --- Update system and install dependencies ---
-echo "🔄 آپدیت کردن پکیج‌ها و نصب پیش‌نیازها (Python, pip, venv, MariaDB)..."
-apt-get update > /dev/null 2>&1
-apt-get install -y python3 python3-pip python3-venv mariadb-server curl git > /dev/null 2>&1
+# --- Check for Docker and Docker Compose, and install if not present ---
+if ! command -v docker &> /dev/null; then
+    echo "🐳 Docker not found. Installing Docker..."
+    curl -fsSL https://get.docker.com -o get-docker.sh
+    sh get-docker.sh
+    rm get-docker.sh
+    echo "✅ Docker installed successfully."
+else
+    echo "✅ Docker is already installed."
+fi
 
-# --- Configure and Secure MariaDB, and create the database automatically ---
-echo "🔐 راه‌اندازی و امن‌سازی خودکار دیتابیس..."
+if ! command -v docker-compose &> /dev/null; then
+    echo "🧩 Docker Compose not found. Installing Docker Compose..."
+    # First, try installing the plugin via apt, which is the modern way
+    apt-get update > /dev/null 2>&1
+    apt-get install -y docker-compose-plugin > /dev/null 2>&1
+    # If the command still doesn't exist, fall back to the manual binary download
+     if ! command -v docker-compose &> /dev/null; then
+        LATEST_COMPOSE=$(curl -s https://api.github.com/repos/docker/compose/releases/latest | grep "tag_name" | cut -d'"' -f4)
+        curl -L "https://github.com/docker/compose/releases/download/${LATEST_COMPOSE}/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+        chmod +x /usr/local/bin/docker-compose
+     fi
+    echo "✅ Docker Compose installed successfully."
+else
+    echo "✅ Docker Compose is already installed."
+fi
 
-# Generate a strong, URL-safe random password for the database user
-# Using 'hex' instead of 'base64' to avoid special characters like '@', '/', '+'
-DB_PASSWORD=$(openssl rand -hex 16)
-DB_NAME="ostadbank_db"
-DB_USER="ostadbank_user"
-
-# Run mysql_secure_installation non-interactively
-mysql -u root <<MYSQL_SECURE_SCRIPT
-ALTER USER 'root'@'localhost' IDENTIFIED BY '${DB_PASSWORD}';
-DELETE FROM mysql.user WHERE User='';
-DELETE FROM mysql.user WHERE User='root' AND Host NOT IN ('localhost', '127.0.0.1', '::1');
-DROP DATABASE IF EXISTS test;
-DELETE FROM mysql.db WHERE Db='test' OR Db='test\\_%';
-FLUSH PRIVILEGES;
-MYSQL_SECURE_SCRIPT
-
-# Create database and user with the generated password
-mysql -u root -p"${DB_PASSWORD}" <<MYSQL_SCRIPT
-CREATE DATABASE $DB_NAME CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-CREATE USER '$DB_USER'@'localhost' IDENTIFIED BY '$DB_PASSWORD';
-GRANT ALL PRIVILEGES ON $DB_NAME.* TO '$DB_USER'@'localhost';
-FLUSH PRIVILEGES;
-MYSQL_SCRIPT
-
-echo "✅ دیتابیس و کاربر به صورت خودکار ساخته شدند."
 
 # --- Clone the repository ---
-echo "📂 کلون کردن پروژه از گیت‌هاب..."
+echo "📂 Cloning the project from GitHub..."
 git clone https://github.com/arsalanarghavan/ostadbank.git /opt/ostadbank
 cd /opt/ostadbank
 
 # --- Create .env file from user input ---
-echo "📝 لطفا اطلاعات زیر را برای ساخت فایل .env وارد کنید..."
-read -p "لطفا توکن ربات تلگرام خود را وارد کنید: " BOT_TOKEN
-read -p "لطفا آیدی عددی ادمین اصلی ربات (Owner ID) را وارد کنید: " OWNER_ID
-read -p "لطفا آیدی کانال اصلی (برای ارسال تجربیات) را وارد کنید (با -100 شروع می‌شود): " CHANNEL_ID
-read -p "لطفا آیدی کانال بکاپ (برای ارسال بکاپ دیتابیس) را وارد کنید (با -100 شروع می‌شود): " BACKUP_CHANNEL_ID
+echo "📝 Please enter the following information to create the .env file..."
+read -p "Enter your domain name (e.g., bot.yourdomain.com): " DOMAIN_NAME
+read -p "Enter your email for Let's Encrypt SSL certificate: " LETSENCRYPT_EMAIL
+read -p "Enter your Telegram Bot Token: " BOT_TOKEN
+read -p "Enter the numeric ID of the bot's Owner: " OWNER_ID
+read -p "Enter the main channel ID (starts with -100): " CHANNEL_ID
+read -p "Enter the backup channel ID (starts with -100): " BACKUP_CHANNEL_ID
 
-# Create the .env file with automated DB credentials
+# Generate strong, random passwords for the database
+DB_PASSWORD=$(openssl rand -hex 16)
+DB_ROOT_PASSWORD=$(openssl rand -hex 16)
+DB_NAME="ostadbank_db"
+DB_USER="ostadbank_user"
+
+# Create the .env file for Docker Compose
 cat > .env << EOF
+# Webhook and SSL Settings
+DOMAIN_NAME=$DOMAIN_NAME
+LETSENCRYPT_EMAIL=$LETSENCRYPT_EMAIL
+
+# Telegram Bot Settings
 BOT_TOKEN=$BOT_TOKEN
 OWNER_ID=$OWNER_ID
 CHANNEL_ID=$CHANNEL_ID
 BACKUP_CHANNEL_ID=$BACKUP_CHANNEL_ID
 
-DB_USER=$DB_USER
-DB_PASSWORD=$DB_PASSWORD
-DB_HOST=127.0.0.1
+# Database Settings for Docker
+# IMPORTANT: DB_HOST must be 'db' to connect to the Docker container
+DB_HOST=db
 DB_PORT=3306
 DB_NAME=$DB_NAME
+DB_USER=$DB_USER
+DB_PASSWORD=$DB_PASSWORD
+DB_ROOT_PASSWORD=$DB_ROOT_PASSWORD
 EOF
 
-echo "✅ فایل .env با موفقیت ساخته شد."
+echo "✅ .env file created successfully."
 
-# --- Setup Python environment and install packages ---
-echo "🐍 ساخت محیط مجازی پایتون و نصب پکیج‌های مورد نیاز..."
-python3 -m venv venv
-source venv/bin/activate
-pip install --upgrade pip > /dev/null 2>&1
-pip install -r requirements.txt > /dev/null 2>&1
-deactivate
-
-echo "✅ پکیج‌های پایتون با موفقیت نصب شدند."
-
-# --- Create systemd service for auto-start ---
-echo "⚙️ ایجاد سرویس systemd برای اجرای خودکار ربات..."
-
-SERVICE_FILE="/etc/systemd/system/ostadbank.service"
-
-cat > $SERVICE_FILE << EOF
-[Unit]
-Description=OstadBank Telegram Bot
-After=network.target mariadb.service
-
-[Service]
-User=root
-Group=root
-WorkingDirectory=/opt/ostadbank
-ExecStart=/opt/ostadbank/venv/bin/python main.py
-Restart=always
-RestartSec=10
-StandardOutput=journal
-StandardError=journal
-
-[Install]
-WantedBy=multi-user.target
-EOF
-
-echo "✅ فایل سرویس با موفقیت ایجاد شد."
-
-# --- Enable and start the service ---
-echo "▶️ فعال‌سازی و راه‌اندازی سرویس ربات..."
-systemctl daemon-reload
-systemctl enable ostadbank.service
-systemctl start ostadbank.service
+# --- Build and run the containers using Docker Compose ---
+echo "🚀 Building images and running containers..."
+# Pulling images first to ensure we have the latest base images
+docker-compose pull
+docker-compose up -d --build
 
 # --- Final check ---
-echo "⏳ بررسی وضعیت نهایی سرویس..."
-sleep 5
-STATUS=$(systemctl is-active ostadbank.service)
+echo "⏳ Checking the final status of the containers..."
+sleep 15 # Wait a bit longer for Traefik and SSL negotiation to complete
 
-if [ "$STATUS" = "active" ]; then
-    echo -e "\n\n🎉 **نصب با موفقیت به پایان رسید!**"
-    echo "✅ ربات شما اکنون فعال و در حال اجرا است."
-    echo "برای مشاهده لاگ‌های ربات می‌توانید از دستور زیر استفاده کنید:"
-    echo "   journalctl -u ostadbank -f"
+STATUS=$(docker-compose ps -q)
+
+if [ -n "$STATUS" ]; then
+    echo -e "\n\n🎉 **Installation completed successfully!**"
+    echo "✅ Your bot is now active and running in Docker containers."
+    echo "✅ An SSL certificate should be automatically configured for https://$DOMAIN_NAME"
+    echo "To view the bot's logs, you can use the command:"
+    echo "   cd /opt/ostadbank && docker-compose logs -f app"
+    echo -e "\nList of running containers:"
+    docker-compose ps
 else
-    echo -e "\n\n⚠️ **خطا در اجرای ربات!**"
-    echo "سرویس ربات نتوانست اجرا شود. برای بررسی مشکل، لاگ‌های آن را با دستور زیر مشاهده کنید:"
-    echo "   journalctl -u ostadbank --no-pager"
+    echo -e "\n\n⚠️ **Error running containers!**"
+    echo "Docker services could not be started. To investigate the issue, view the logs with:"
+    echo "   cd /opt/ostadbank && docker-compose logs"
 fi

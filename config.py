@@ -26,6 +26,11 @@ if not BACKUP_CHANNEL_ID_STR:
 BACKUP_CHANNEL_ID = int(BACKUP_CHANNEL_ID_STR)
 
 
+# --- Webhook Configurations (Added) ---
+DOMAIN_NAME = os.getenv("DOMAIN_NAME", None)
+LETSENCRYPT_EMAIL = os.getenv("LETSENCRYPT_EMAIL", None)
+
+
 # --- Database Configurations ---
 DB_USER = os.getenv("DB_USER", "root")
 DB_PASSWORD = os.getenv("DB_PASSWORD", "")

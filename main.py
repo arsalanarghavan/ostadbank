@@ -679,12 +679,9 @@ def main():
     db.initialize_database()
     app = Application.builder().token(config.BOT_TOKEN).build()
     
-    # +++ Added for Backup Feature +++
-    # Schedule the backup job to run every 30 minutes (1800 seconds)
-    # The first run is 15 seconds after startup for immediate feedback/testing
+    # Schedule the backup job
     job_queue = app.job_queue
     job_queue.run_repeating(backup_database, interval=1800, first=15)
-    # +++ End of Added Section +++
 
     submission_handler = ConversationHandler(
         entry_points=[MessageHandler(filters.Regex('^' + db.get_text(SUBMIT_EXP_BTN_KEY) + '$'), submission_start)],
@@ -778,9 +775,20 @@ def main():
     app.add_handler(CallbackQueryHandler(item_delete_callback, pattern=ITEM_DELETE))
     app.add_handler(CallbackQueryHandler(item_confirm_delete_callback, pattern=ITEM_CONFIRM_DELETE))
 
+    # --- Webhook or Polling ---
+    # Check for DOMAIN_NAME in environment to decide run mode
+    if config.DOMAIN_NAME:
+        logger.info(f"Starting bot in webhook mode for domain: {config.DOMAIN_NAME}")
+        app.run_webhook(
+            listen="0.0.0.0",
+            port=8443,
+            url_path=config.BOT_TOKEN, # Using bot token as secret path
+            webhook_url=f"https://{config.DOMAIN_NAME}/{config.BOT_TOKEN}"
+        )
+    else:
+        logger.info("Starting bot in polling mode...")
+        app.run_polling()
 
-    logger.info("Bot is starting...")
-    app.run_polling()
 
 if __name__ == "__main__":
     main()
