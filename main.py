@@ -201,6 +201,14 @@ async def select_major(update: Update, context: ContextTypes.DEFAULT_TYPE) -> St
     await query.edit_message_text(db.get_text('choose_course'), reply_markup=kb.dynamic_list_keyboard(courses, 'course'))
     return States.SELECTING_COURSE
 
+async def select_course(update: Update, context: ContextTypes.DEFAULT_TYPE) -> States:
+    query = update.callback_query
+    await query.answer()
+    context.user_data['experience']['course_id'] = int(query.data.split('_')[-1])
+    professors, _ = db.get_paginated_list(Professor, per_page=100)
+    await query.edit_message_text(db.get_text('choose_professor'), reply_markup=kb.dynamic_list_keyboard(professors, 'professor', has_add_new=True))
+    return States.SELECTING_PROFESSOR
+
 async def select_professor(update: Update, context: ContextTypes.DEFAULT_TYPE) -> States:
     """Handles the user's selection of a professor."""
     query = update.callback_query
