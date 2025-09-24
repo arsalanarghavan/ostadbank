@@ -60,7 +60,11 @@ read -p "Enter your Cloudflare API Token (for DNS Challenge): " CLOUDFLARE_API_T
 DB_PASSWORD=$(openssl rand -hex 16)
 DB_ROOT_PASSWORD=$(openssl rand -hex 16)
 
-# Create the .env file for Docker Compose
+# Create the .env file for Docker Compose with UTF-8 support
+# این قسمت برای حل مشکل UnicodeDecodeError اضافه شده است
+export LC_ALL=en_US.UTF-8
+export LANG=en_US.UTF-8
+
 cat > .env << EOF
 # Webhook and SSL Settings
 DOMAIN_NAME=$DOMAIN_NAME
