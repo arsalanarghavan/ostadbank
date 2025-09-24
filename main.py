@@ -54,7 +54,6 @@ async def backup_database(context: ContextTypes.DEFAULT_TYPE):
         backup_filename = f"ostadbank_backup_{timestamp}.sql"
 
         # 2. Construct the mysqldump command
-        # Note: No space between -p and the password is crucial
         command = (
             f"mysqldump --skip-ssl -h {config.DB_HOST} "
             f"-P {config.DB_PORT} "
@@ -592,11 +591,11 @@ async def item_confirm_delete_callback(update: Update, context: ContextTypes.DEF
 
     model = MODEL_MAP[prefix]
     db.delete_item(model, item_id)
-    await query.answer(db.get_text('item_deleted_successfully'), show_alert=True)
     
-    # Simulate a new callback to refresh the list
-    query.data = f"admin_list_{prefix}_{page}"
-    await admin_list_items_callback(update, context)
+    await query.edit_message_text(
+        text=db.get_text('item_deleted_successfully'),
+        reply_markup=kb.back_to_list_keyboard(prefix, page)
+    )
 
 
 async def item_add_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> States:
@@ -634,18 +633,11 @@ async def item_add_receive_name(update: Update, context: ContextTypes.DEFAULT_TY
         if prefix == 'course': kwargs['major_id'] = parent_id
         
     db.add_item(model, **kwargs)
-    await update.message.reply_text(db.get_text('item_added_successfully'))
     
-    # Create a dummy update object to call the list callback
-    dummy_update = Update(update.update_id, message=update.message)
-    dummy_callback_query = type('obj', (object,), {
-        'data': f"admin_list_{prefix}_{page}",
-        'answer': (lambda: None),
-        'edit_message_text': update.message.reply_text,
-        'message': update.message
-    })()
-    dummy_update.callback_query = dummy_callback_query
-    await admin_list_items_callback(dummy_update, context)
+    await update.message.reply_text(
+        db.get_text('item_added_successfully'),
+        reply_markup=kb.back_to_list_keyboard(prefix, page)
+    )
 
     context.user_data.clear()
     return ConversationHandler.END
@@ -662,24 +654,20 @@ async def item_add_select_parent(update: Update, context: ContextTypes.DEFAULT_T
     return States.GETTING_NEW_NAME
 
 async def admin_add_get_id(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    page = context.user_data.get('page', 1)
+    prefix = "admin"
     try:
         user_id = int(update.message.text)
         db.add_item(Admin, user_id=user_id)
-        await update.message.reply_text("ادمین جدید با موفقیت اضافه شد.")
+        await update.message.reply_text(
+            "ادمین جدید با موفقیت اضافه شد.",
+            reply_markup=kb.back_to_list_keyboard(prefix, page)
+        )
     except (ValueError, Exception) as e:
-        await update.message.reply_text(f"خطا: {e}. لطفا یک آیدی عددی معتبر وارد کنید.")
-
-    page = context.user_data.get('page', 1)
-    # Create a dummy update to refresh list
-    dummy_update = Update(update.update_id, message=update.message)
-    dummy_callback_query = type('obj', (object,), {
-        'data': f"admin_list_admin_{page}",
-        'answer': (lambda: None),
-        'edit_message_text': update.message.reply_text,
-        'message': update.message
-    })()
-    dummy_update.callback_query = dummy_callback_query
-    await admin_list_items_callback(dummy_update, context)
+        await update.message.reply_text(
+            f"خطا: {e}. لطفا یک آیدی عددی معتبر وارد کنید.",
+            reply_markup=kb.back_to_list_keyboard(prefix, page)
+        )
 
     context.user_data.clear()
     return ConversationHandler.END
@@ -715,18 +703,11 @@ async def item_edit_receive_name(update: Update, context: ContextTypes.DEFAULT_T
     model = MODEL_MAP[prefix]
 
     db.update_item(model, item_id, name=update.message.text.strip())
-    await update.message.reply_text(db.get_text('item_updated_successfully'))
-
-    # Go back to the list
-    dummy_update = Update(update.update_id, message=update.message)
-    dummy_callback_query = type('obj', (object,), {
-        'data': f"admin_list_{prefix}_{page}",
-        'answer': (lambda: None),
-        'edit_message_text': update.message.reply_text,
-        'message': update.message
-    })()
-    dummy_update.callback_query = dummy_callback_query
-    await admin_list_items_callback(dummy_update, context)
+    
+    await update.message.reply_text(
+        db.get_text('item_updated_successfully'),
+        reply_markup=kb.back_to_list_keyboard(prefix, page)
+    )
 
     context.user_data.clear()
     return ConversationHandler.END
@@ -752,24 +733,17 @@ async def text_edit_receive_value(update: Update, context: ContextTypes.DEFAULT_
     """Receives the new text and updates it in the database."""
     key = context.user_data.get('item_key')
     page = context.user_data.get('page')
+    prefix = 'texts'
 
     with db.session_scope() as s:
         text_item = s.query(BotText).filter_by(key=key).first()
         if text_item:
             text_item.value = update.message.text
 
-    await update.message.reply_text(db.get_text('item_updated_successfully'))
-
-    # Go back to the text list
-    dummy_update = Update(update.update_id, message=update.message)
-    dummy_callback_query = type('obj', (object,), {
-        'data': f"admin_list_texts_{page}",
-        'answer': (lambda: None),
-        'edit_message_text': update.message.reply_text,
-        'message': update.message
-    })()
-    dummy_update.callback_query = dummy_callback_query
-    await admin_list_items_callback(dummy_update, context)
+    await update.message.reply_text(
+        db.get_text('item_updated_successfully'),
+        reply_markup=kb.back_to_list_keyboard(prefix, page)
+    )
 
     context.user_data.clear()
     return ConversationHandler.END
@@ -781,9 +755,7 @@ def main():
     db.initialize_database()
     app = Application.builder().token(config.BOT_TOKEN).build()
     
-    # Schedule the backup job
     job_queue = app.job_queue
-    # Runs every 30 minutes, starting 15 seconds after launch
     job_queue.run_repeating(backup_database, interval=1800, first=15)
 
     submission_handler = ConversationHandler(
@@ -848,7 +820,6 @@ def main():
         per_user=True, per_chat=True
     )
 
-    # --- START: New Edit Handlers Registration ---
     item_edit_handler = ConversationHandler(
         entry_points=[CallbackQueryHandler(item_edit_start, pattern=ITEM_EDIT)],
         states={
@@ -866,7 +837,6 @@ def main():
         fallbacks=[CommandHandler('cancel', cancel_submission)],
         per_user=True, per_chat=True
     )
-    # --- END: New Edit Handlers Registration ---
 
 
     # --- Register Handlers ---
@@ -882,7 +852,6 @@ def main():
     app.add_handler(single_message_handler)
     app.add_handler(add_channel_handler)
     app.add_handler(item_add_handler)
-    # --- Add new handlers to the application ---
     app.add_handler(item_edit_handler)
     app.add_handler(text_edit_handler)
     
