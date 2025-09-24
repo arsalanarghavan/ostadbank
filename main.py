@@ -594,6 +594,7 @@ async def item_confirm_delete_callback(update: Update, context: ContextTypes.DEF
     db.delete_item(model, item_id)
     await query.answer(db.get_text('item_deleted_successfully'), show_alert=True)
     
+    # Simulate a new callback to refresh the list
     query.data = f"admin_list_{prefix}_{page}"
     await admin_list_items_callback(update, context)
 
@@ -635,7 +636,16 @@ async def item_add_receive_name(update: Update, context: ContextTypes.DEFAULT_TY
     db.add_item(model, **kwargs)
     await update.message.reply_text(db.get_text('item_added_successfully'))
     
-    await context.bot.send_message(chat_id=update.effective_chat.id, text="بازگشت به لیست...", reply_markup=kb.back_to_list_keyboard(prefix, page))
+    # Create a dummy update object to call the list callback
+    dummy_update = Update(update.update_id, message=update.message)
+    dummy_callback_query = type('obj', (object,), {
+        'data': f"admin_list_{prefix}_{page}",
+        'answer': (lambda: None),
+        'edit_message_text': update.message.reply_text,
+        'message': update.message
+    })()
+    dummy_update.callback_query = dummy_callback_query
+    await admin_list_items_callback(dummy_update, context)
 
     context.user_data.clear()
     return ConversationHandler.END
@@ -660,10 +670,110 @@ async def admin_add_get_id(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         await update.message.reply_text(f"خطا: {e}. لطفا یک آیدی عددی معتبر وارد کنید.")
 
     page = context.user_data.get('page', 1)
-    await context.bot.send_message(chat_id=update.effective_chat.id, text="بازگشت به لیست...", reply_markup=kb.back_to_list_keyboard('admin', page))
+    # Create a dummy update to refresh list
+    dummy_update = Update(update.update_id, message=update.message)
+    dummy_callback_query = type('obj', (object,), {
+        'data': f"admin_list_admin_{page}",
+        'answer': (lambda: None),
+        'edit_message_text': update.message.reply_text,
+        'message': update.message
+    })()
+    dummy_update.callback_query = dummy_callback_query
+    await admin_list_items_callback(dummy_update, context)
 
     context.user_data.clear()
     return ConversationHandler.END
+
+# --- START: New Edit Handlers ---
+async def item_edit_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> States:
+    """Starts the edit process for an item (Field, Major, etc.)."""
+    if not await check_admin(update, context): return ConversationHandler.END
+    query = update.callback_query
+    await query.answer()
+
+    parts = query.data.split('_')
+    prefix = parts[0]
+    item_id = int(parts[2])
+    page = int(parts[3])
+
+    context.user_data['prefix'] = prefix
+    context.user_data['item_id'] = item_id
+    context.user_data['page'] = page
+
+    model = MODEL_MAP[prefix]
+    item = db.get_item_by_id(model, item_id)
+    current_name = item.name if hasattr(item, 'name') else f"ID: {item.user_id}"
+
+    await query.edit_message_text(db.get_text('ask_for_update_item_name', current_name=current_name))
+    return States.GETTING_UPDATED_NAME
+
+async def item_edit_receive_name(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Receives the new name and updates the item."""
+    prefix = context.user_data.get('prefix')
+    item_id = context.user_data.get('item_id')
+    page = context.user_data.get('page')
+    model = MODEL_MAP[prefix]
+
+    db.update_item(model, item_id, name=update.message.text.strip())
+    await update.message.reply_text(db.get_text('item_updated_successfully'))
+
+    # Go back to the list
+    dummy_update = Update(update.update_id, message=update.message)
+    dummy_callback_query = type('obj', (object,), {
+        'data': f"admin_list_{prefix}_{page}",
+        'answer': (lambda: None),
+        'edit_message_text': update.message.reply_text,
+        'message': update.message
+    })()
+    dummy_update.callback_query = dummy_callback_query
+    await admin_list_items_callback(dummy_update, context)
+
+    context.user_data.clear()
+    return ConversationHandler.END
+
+async def text_edit_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> States:
+    """Starts the edit process for a bot text."""
+    if not await check_admin(update, context): return ConversationHandler.END
+    query = update.callback_query
+    await query.answer()
+
+    parts = query.data.split('_')
+    key = "_".join(parts[2:-1])
+    page = int(parts[-1])
+
+    context.user_data['prefix'] = 'texts'
+    context.user_data['item_key'] = key
+    context.user_data['page'] = page
+
+    await query.edit_message_text(db.get_text('ask_for_update_text_value', key=key))
+    return States.GETTING_UPDATED_TEXT
+
+async def text_edit_receive_value(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Receives the new text and updates it in the database."""
+    key = context.user_data.get('item_key')
+    page = context.user_data.get('page')
+
+    with db.session_scope() as s:
+        text_item = s.query(BotText).filter_by(key=key).first()
+        if text_item:
+            text_item.value = update.message.text
+
+    await update.message.reply_text(db.get_text('item_updated_successfully'))
+
+    # Go back to the text list
+    dummy_update = Update(update.update_id, message=update.message)
+    dummy_callback_query = type('obj', (object,), {
+        'data': f"admin_list_texts_{page}",
+        'answer': (lambda: None),
+        'edit_message_text': update.message.reply_text,
+        'message': update.message
+    })()
+    dummy_update.callback_query = dummy_callback_query
+    await admin_list_items_callback(dummy_update, context)
+
+    context.user_data.clear()
+    return ConversationHandler.END
+# --- END: New Edit Handlers ---
 
 
 # --- Main Application Setup ---
@@ -673,6 +783,7 @@ def main():
     
     # Schedule the backup job
     job_queue = app.job_queue
+    # Runs every 30 minutes, starting 15 seconds after launch
     job_queue.run_repeating(backup_database, interval=1800, first=15)
 
     submission_handler = ConversationHandler(
@@ -737,6 +848,27 @@ def main():
         per_user=True, per_chat=True
     )
 
+    # --- START: New Edit Handlers Registration ---
+    item_edit_handler = ConversationHandler(
+        entry_points=[CallbackQueryHandler(item_edit_start, pattern=ITEM_EDIT)],
+        states={
+            States.GETTING_UPDATED_NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, item_edit_receive_name)],
+        },
+        fallbacks=[CommandHandler('cancel', cancel_submission)],
+        per_user=True, per_chat=True
+    )
+    
+    text_edit_handler = ConversationHandler(
+        entry_points=[CallbackQueryHandler(text_edit_start, pattern=TEXT_EDIT)],
+        states={
+            States.GETTING_UPDATED_TEXT: [MessageHandler(filters.TEXT & ~filters.COMMAND, text_edit_receive_value)],
+        },
+        fallbacks=[CommandHandler('cancel', cancel_submission)],
+        per_user=True, per_chat=True
+    )
+    # --- END: New Edit Handlers Registration ---
+
+
     # --- Register Handlers ---
     app.add_handler(CommandHandler("start", start_command))
     app.add_handler(CommandHandler("admin", admin_command))
@@ -750,6 +882,10 @@ def main():
     app.add_handler(single_message_handler)
     app.add_handler(add_channel_handler)
     app.add_handler(item_add_handler)
+    # --- Add new handlers to the application ---
+    app.add_handler(item_edit_handler)
+    app.add_handler(text_edit_handler)
+    
     app.add_handler(CallbackQueryHandler(admin_panel_callback, pattern=ADMIN_MAIN_PANEL))
     app.add_handler(CallbackQueryHandler(show_stats_callback, pattern=r'^admin_stats$'))
     app.add_handler(CallbackQueryHandler(experience_approval_handler, pattern=EXPERIENCE_APPROVAL))
@@ -766,14 +902,13 @@ def main():
 
     # --- Webhook or Polling ---
     if config.DOMAIN_NAME:
-        # اگر پورت ۴۴۳ نبود، آن را به آدرس اضافه کن
         port_suffix = f":{config.WEBHOOK_PORT}" if config.WEBHOOK_PORT not in [443, 80, 88] else ""
         webhook_url = f"https://{config.DOMAIN_NAME}{port_suffix}/{config.BOT_TOKEN}"
         
         logger.info(f"Starting bot in webhook mode. URL: {webhook_url}")
         app.run_webhook(
             listen="0.0.0.0",
-            port=8443,  # این پورت داخلی بین traefik و ربات است و ثابت می‌ماند
+            port=8443,
             url_path=config.BOT_TOKEN,
             webhook_url=webhook_url
         )
