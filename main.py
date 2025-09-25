@@ -1,4 +1,4 @@
-# main.py
+# main.py (نسخه نهایی و کامل)
 
 import logging
 import asyncio
@@ -32,11 +32,8 @@ from constants import (
 logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# --- دیتابیس را همینجا مقداردهی اولیه کنید ---
 db.initialize_database()
-# -------------------------------------------
 
-# --- مدل‌ها و پیشوندها ---
 MODEL_MAP = {
     'field': Field, 'major': Major, 'professor': Professor,
     'course': Course, 'admin': Admin, 'text': BotText
@@ -45,8 +42,6 @@ PREFIX_MAP = {
     'field': 'رشته', 'major': 'گرایش', 'professor': 'استاد',
     'course': 'درس', 'admin': 'ادمین', 'text': 'متن'
 }
-
-# --- توابع اصلی برنامه ---
 
 async def backup_database(context: ContextTypes.DEFAULT_TYPE):
     logger.info("Starting scheduled database backup...")
@@ -121,7 +116,6 @@ async def check_channel_membership(update: Update, context: ContextTypes.DEFAULT
         )
     return is_member_of_all
 
-# ----------------- START: تابع format_experience (اصلاح نهایی) -----------------
 def format_experience(exp: Experience, md_version: int = 2) -> str:
     def def_md(text):
         return escape_markdown(str(text), version=md_version)
@@ -136,11 +130,9 @@ def format_experience(exp: Experience, md_version: int = 2) -> str:
     attendance_details = def_md(exp.attendance_details)
     exam = def_md(exp.exam)
     conclusion = def_md(exp.conclusion)
-
     tags = f"\\#{exp.field.name.replace(' ', '_')} \\#{exp.major.name.replace(' ', '_')} \\#{exp.professor.name.replace(' ', '_')} \\#{exp.course.name.replace(' ', '_')}"
     attendance_text = db.get_text('exp_format_attendance_yes') if exp.attendance_required else db.get_text('exp_format_attendance_no')
 
-    # پرانتزها با \\ escape شده‌اند
     return (f"{db.get_text('exp_format_field')}: {field_name} \\({major_name}\\)\n"
             f"{db.get_text('exp_format_professor')}: {professor_name}\n"
             f"{db.get_text('exp_format_course')}: {course_name}\n"
@@ -151,7 +143,6 @@ def format_experience(exp: Experience, md_version: int = 2) -> str:
             f"{db.get_text('exp_format_exam')}:\n{exam}\n"
             f"{db.get_text('exp_format_conclusion')}:\n{conclusion}\n"
             f"{def_md(db.get_text('exp_format_footer'))}\n{db.get_text('exp_format_tags')}: {tags}")
-# ----------------- END: تابع format_experience -----------------
 
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     db.add_user(update.effective_user.id, update.effective_user.first_name)
@@ -168,7 +159,7 @@ async def membership_check_callback(update: Update, context: ContextTypes.DEFAUL
             text=db.get_text('welcome'),
             reply_markup=kb.main_menu()
         )
-# ----------------- START: تابع my_experiences_command (اصلاح نهایی) -----------------
+
 async def my_experiences_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await check_channel_membership(update, context): return
     exps = db.get_user_experiences(update.effective_user.id)
@@ -185,10 +176,8 @@ async def my_experiences_command(update: Update, context: ContextTypes.DEFAULT_T
         course_name = escape_markdown(exp.course.name, version=2)
         prof_name = escape_markdown(exp.professor.name, version=2)
         status_text = status_map.get(exp.status, str(exp.status))
-        # پرانتزها با \\ escape شده‌اند
         response += f"*{course_name}* \\- *{prof_name}* \\({status_text}\\)\n"
     await update.message.reply_text(response, parse_mode=constants.ParseMode.MARKDOWN_V2)
-# ----------------- END: تابع my_experiences_command -----------------
 
 async def rules_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await check_channel_membership(update, context): return
@@ -228,7 +217,6 @@ async def select_course(update: Update, context: ContextTypes.DEFAULT_TYPE) -> S
     return States.SELECTING_PROFESSOR
 
 async def select_professor(update: Update, context: ContextTypes.DEFAULT_TYPE) -> States:
-    """Handles the user's selection of a professor."""
     query = update.callback_query
     await query.answer()
     professor_id = int(query.data.split('_')[-1])
@@ -283,7 +271,6 @@ async def get_attendance_details(update: Update, context: ContextTypes.DEFAULT_T
 async def get_exam(update: Update, context: ContextTypes.DEFAULT_TYPE) -> States:
     return await get_text_input(update, context, 'exam', States.GETTING_CONCLUSION, 'ask_conclusion')
 
-# ----------------- START: تابع get_conclusion_and_finish (اصلاح شده) -----------------
 async def get_conclusion_and_finish(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     user_input = update.message.text
     if len(user_input) > 1000:
@@ -302,7 +289,9 @@ async def get_conclusion_and_finish(update: Update, context: ContextTypes.DEFAUL
 
         s.refresh(new_exp, attribute_names=['field', 'major', 'professor', 'course'])
         
-        admin_message = db.get_text('admin_new_experience_notification', exp_id=new_exp.id) + format_experience(new_exp)
+        # لایه محافظتی اضافه شد: متن دیتابیس هم escape می‌شود
+        notification_text = escape_markdown(db.get_text('admin_new_experience_notification', exp_id=new_exp.id), version=2)
+        admin_message = notification_text + format_experience(new_exp)
         
         for admin in s.query(Admin).all(): 
             try:
@@ -317,7 +306,6 @@ async def get_conclusion_and_finish(update: Update, context: ContextTypes.DEFAUL
     await update.message.reply_text(db.get_text('submission_success'), reply_markup=kb.main_menu())
     context.user_data.clear()
     return ConversationHandler.END
-# ----------------- END: تابع get_conclusion_and_finish -----------------
 
 async def cancel_submission(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     query = update.callback_query
@@ -605,12 +593,8 @@ async def text_edit_receive_value(update: Update, context: ContextTypes.DEFAULT_
     context.user_data.clear()
     return ConversationHandler.END
 
-# --- START: بخش نهایی و اصلاح‌شده برای اجرا ---
-
-# ۱. ساخت هسته اصلی برنامه تلگرام
 ptb_app = Application.builder().token(config.BOT_TOKEN).build()
 
-# ۲. ثبت تمام کنترل‌کننده‌ها (Handlers)
 conv_defaults = {'per_message': False}
 submission_handler = ConversationHandler(
     entry_points=[MessageHandler(filters.Regex('^' + db.get_text(SUBMIT_EXP_BTN_KEY) + '$'), submission_start)],
@@ -698,35 +682,26 @@ ptb_app.add_handler(CallbackQueryHandler(admin_list_items_callback, pattern=ADMI
 ptb_app.add_handler(CallbackQueryHandler(item_delete_callback, pattern=ITEM_DELETE))
 ptb_app.add_handler(CallbackQueryHandler(item_confirm_delete_callback, pattern=ITEM_CONFIRM_DELETE))
 
-# ۳. تعریف توابع برای زمان شروع و پایان کار برنامه
 async def on_startup(application: Application):
-    """کارهایی که در زمان شروع به کار ربات باید انجام شود"""
     application.job_queue.run_repeating(backup_database, interval=1800, first=15)
     webhook_url = f"https://{config.DOMAIN_NAME}/{config.BOT_TOKEN}"
     logger.info(f"The bot is running and listening for webhooks at: {webhook_url}")
 
 async def on_shutdown(application: Application):
-    """کارهایی که در زمان خاموش شدن ربات باید انجام شود"""
     logger.info("Bot is shutting down...")
 
-
-# ۴. اتصال توابع شروع و پایان به برنامه
 ptb_app.post_init = on_startup
 ptb_app.post_shutdown = on_shutdown
 
-# ۵. ساخت "سوئیچ استارت" نهایی برای Uvicorn
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     print("Application starting...")
     await ptb_app.initialize()
-    # این خط را حذف یا کامنت می‌کنیم تا وب‌هوک به صورت خودکار تنظیم نشود
-    # await ptb_app.updater.start_webhook()
     await ptb_app.start()
     yield
     print("Application shutting down...")
     await ptb_app.updater.stop()
     await ptb_app.shutdown()
-
 
 app = FastAPI(lifespan=lifespan)
 
@@ -739,5 +714,3 @@ async def webhook_handler(request: Request):
 
 if __name__ == "__main__":
     asyncio.run(ptb_app.run_polling())
-
-# --- END: بخش نهایی ---

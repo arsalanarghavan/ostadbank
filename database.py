@@ -95,7 +95,11 @@ def initialize_database():
             'status_pending': '⏳ در انتظار تایید',
             'status_approved': '✅ تایید شده',
             'status_rejected': '❌ رد شده',
-            'admin_new_experience_notification': 'یک تجربه جدید برای بررسی ثبت شد (ID: {exp_id}):\n\n',
+            
+            # ----------------- START: خط اصلاح شده -----------------
+            'admin_new_experience_notification': 'یک تجربه جدید برای بررسی ثبت شد - ID: {exp_id}\n\n',
+            # ----------------- END: خط اصلاح شده -----------------
+            
             'admin_recheck_experience': 'بررسی مجدد تجربه ID: {exp_id}\n\n',
             'admin_approval_success': '✅ تجربه با ID {exp_id} تایید و در کانال منتشر شد.',
             'admin_rejection_success': '❌ تجربه با ID {exp_id} به دلیل «{reason}» رد شد.',
