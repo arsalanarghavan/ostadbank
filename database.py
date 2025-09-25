@@ -201,14 +201,15 @@ def get_experience(exp_id):
             joinedload(Experience.course)
         ).get(exp_id)
 
+# ------------------- START: CORRECTED FUNCTION -------------------
 def get_user_experiences(user_id):
-    """Get all experiences submitted by a specific user."""
+    """Get all experiences for a user, eagerly loading necessary relationships."""
     with session_scope() as s:
-        exps = s.query(Experience).options(
+        return s.query(Experience).options(
             joinedload(Experience.course),
             joinedload(Experience.professor)
         ).filter_by(user_id=user_id).all()
-        return exps
+# -------------------- END: CORRECTED FUNCTION --------------------
 
 def add_item(model, **kwargs):
     """Add a new item to the database."""
