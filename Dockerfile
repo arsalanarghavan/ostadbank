@@ -4,13 +4,14 @@ FROM python:3.11-slim
 # Set the working directory in the container
 WORKDIR /app
 
-# Install system dependencies
+# Install system dependencies, including netcat
 RUN apt-get update && apt-get install -y \
     build-essential \
     default-libmysqlclient-dev \
     mariadb-client \
     git \
     curl \
+    netcat-openbsd \
     --no-install-recommends && \
     rm -rf /var/lib/apt/lists/*
 
@@ -29,11 +30,8 @@ RUN pip show python-telegram-bot
 # Copy the rest of the application's code into the container
 COPY . .
 
-# --- START: NEW LINE ---
 # Make the entrypoint script executable
 RUN chmod +x /app/entrypoint.sh
-# --- END: NEW LINE ---
-
 
 # The CMD is now superseded by the entrypoint in docker-compose.yml,
 # but we leave it here for clarity.
