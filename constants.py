@@ -39,6 +39,7 @@ class States(Enum):
 
     # Experience Search Flow
     GETTING_PROFESSOR_SEARCH_QUERY = auto()
+    GETTING_USER_SEARCH_QUERY = auto() # State for user search conversation
 
 
 # --- Callback Data Patterns ---
@@ -51,7 +52,7 @@ PROFESSOR_ADD_NEW = r"^professor_add_new$"
 ATTENDANCE_CHOICE = r"^attendance_"
 CANCEL_SUBMISSION = r"^cancel_submission$"
 CHECK_MEMBERSHIP = r"^check_membership$"
-USER_SEARCH_RESULT = r"^user_search_result_" # New pattern for user search results
+USER_SEARCH_RESULT = r"^user_search_result_"
 
 
 # Admin panel patterns
@@ -86,7 +87,7 @@ COMPLEX_ITEM_SELECT_PARENT = r"^(major|course)_selectfield_"
 
 # Experience approval patterns
 EXPERIENCE_APPROVAL = r"^exp_(approve|reject|reason)_"
-EXPERIENCE_DELETE_CONTENT = r"^exp_delete_content_" # New pattern for content deletion
+EXPERIENCE_DELETE_CONTENT = r"^exp_delete_content_"
 
 
 # --- Bot Text Keys (for database) ---

@@ -27,12 +27,12 @@ from constants import (
     ATTENDANCE_CHOICE, CANCEL_SUBMISSION, ADMIN_MAIN_PANEL, ADMIN_LIST_ITEMS,
     ADMIN_LIST_TEXTS, ITEM_ADD, ADMIN_ADD, ITEM_EDIT, TEXT_EDIT, ITEM_DELETE,
     ITEM_CONFIRM_DELETE, COMPLEX_ITEM_SELECT_PARENT, EXPERIENCE_APPROVAL,
-    SUBMIT_EXP_BTN_KEY, MY_EXPS_BTN_KEY, RULES_BTN_KEY, CHECK_MEMBERSHIP,
+    SUBMIT_EXP_BTN_KEY, MY_EXPS_BTN_KEY, RULES_BTN_KEY, SEARCH_BTN_KEY, CHECK_MEMBERSHIP,
     ADMIN_MANAGE_CHANNELS, ADMIN_ADD_CHANNEL, ADMIN_DELETE_CHANNEL, ADMIN_TOGGLE_FORCE_SUB,
     ADMIN_MANAGE_EXPERIENCES, ADMIN_LIST_PENDING_EXPERIENCES, ADMIN_PENDING_EXPERIENCE_DETAIL,
     ADMIN_SEARCH_EXPERIENCES, ADMIN_SEARCH_RESULTS_PAGE, ADMIN_SEARCH_DETAIL,
     EXPERIENCE_DELETE_CONTENT, USER_SEARCH_RESULT, USER_SEARCH_NO_RESULTS_KEY,
-    USER_SEARCH_HEADER_KEY
+    USER_SEARCH_HEADER_KEY, USER_SEARCH_PROMPT_KEY
 )
 
 logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO)
@@ -909,21 +909,24 @@ async def admin_search_detail_callback(update: Update, context: ContextTypes.DEF
             reply_markup=kb.admin_approval_keyboard(exp.id, user, from_list_page=page, from_search=True)
         )
 
-async def handle_global_search(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handles any text message as a potential search query."""
-    query_str = update.message.text
-    if len(query_str) < 3: # Avoid searching for very short texts
-        return
+async def user_search_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> States:
+    """Starts the user search conversation."""
+    await update.message.reply_text(db.get_text(USER_SEARCH_PROMPT_KEY))
+    return States.GETTING_USER_SEARCH_QUERY
 
+async def user_search_receive_query(update: Update, context: ContextTypes.DEFAULT_TYPE) -> States:
+    """Receives user's search query and displays results."""
+    query_str = update.message.text
     experiences, _ = db.search_experiences_for_user(query_str, per_page=20)
 
     if not experiences:
         await update.message.reply_text(db.get_text(USER_SEARCH_NO_RESULTS_KEY, query=query_str))
-        return
+        return States.GETTING_USER_SEARCH_QUERY
 
     keyboard = kb.user_search_inline_keyboard(experiences)
     await update.message.reply_text(db.get_text(USER_SEARCH_HEADER_KEY, query=query_str), reply_markup=keyboard)
-
+    return States.GETTING_USER_SEARCH_QUERY
+        
 async def show_user_search_result(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Callback function to show a selected search result."""
     query = update.callback_query
@@ -992,7 +995,19 @@ submission_handler = ConversationHandler(
         States.GETTING_EXAM: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_exam)],
         States.GETTING_CONCLUSION: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_conclusion_and_finish)],
     },
-    fallbacks=[CallbackQueryHandler(cancel_submission, pattern=CANCEL_SUBMISSION)],
+    fallbacks=[
+        CallbackQueryHandler(cancel_submission, pattern=CANCEL_SUBMISSION),
+        MessageHandler(filters.Regex('^' + db.get_text('btn_main_menu') + '$'), back_to_main_menu),
+    ],
+    **conv_defaults
+)
+
+user_search_handler = ConversationHandler(
+    entry_points=[MessageHandler(filters.Regex('^' + db.get_text(SEARCH_BTN_KEY) + '$'), user_search_start)],
+    states={
+        States.GETTING_USER_SEARCH_QUERY: [MessageHandler(filters.TEXT & ~filters.COMMAND, user_search_receive_query)],
+    },
+    fallbacks=[MessageHandler(filters.Regex('^' + db.get_text('btn_main_menu') + '$'), back_to_main_menu)],
     **conv_defaults
 )
 
@@ -1048,6 +1063,7 @@ text_edit_handler = ConversationHandler(
     fallbacks=[CallbackQueryHandler(cancel_submission, pattern=CANCEL_SUBMISSION)], **conv_defaults
 )
 
+# Command and Message Handlers
 ptb_app.add_handler(CommandHandler("start", start_command))
 ptb_app.add_handler(CommandHandler("admin", admin_command))
 ptb_app.add_handler(MessageHandler(filters.Regex('^' + db.get_text(MY_EXPS_BTN_KEY) + '$'), my_experiences_command))
@@ -1065,7 +1081,7 @@ ptb_app.add_handler(MessageHandler(filters.Regex('^' + db.get_text('btn_admin_ma
 ptb_app.add_handler(MessageHandler(filters.Regex('^' + db.get_text('btn_admin_manage_texts') + '$'), lambda u, c: admin_list_items_command(u, c, 'texts')))
 ptb_app.add_handler(MessageHandler(filters.Regex('^' + db.get_text('btn_admin_manage_admins') + '$'), lambda u, c: admin_list_items_command(u, c, 'admin')))
 
-# Conversation Handlers (Order is important)
+# Conversation Handlers
 ptb_app.add_handler(submission_handler)
 ptb_app.add_handler(broadcast_handler)
 ptb_app.add_handler(single_message_handler)
@@ -1074,6 +1090,7 @@ ptb_app.add_handler(item_add_handler)
 ptb_app.add_handler(item_edit_handler)
 ptb_app.add_handler(text_edit_handler)
 ptb_app.add_handler(search_handler)
+ptb_app.add_handler(user_search_handler)
 
 # Inline Query Handler
 ptb_app.add_handler(InlineQueryHandler(inline_search_handler))
@@ -1092,6 +1109,7 @@ ptb_app.add_handler(CallbackQueryHandler(item_confirm_delete_callback, pattern=I
 ptb_app.add_handler(CallbackQueryHandler(my_experiences_page_callback, pattern=r"^my_exps_"))
 ptb_app.add_handler(CallbackQueryHandler(experience_detail_callback, pattern=r"^exp_detail_"))
 ptb_app.add_handler(CallbackQueryHandler(edit_experience_callback, pattern=r"^edit_exp_"))
+ptb_app.add_handler(CallbackQueryHandler(show_user_search_result, pattern=USER_SEARCH_RESULT))
 
 # New handlers for experience management
 ptb_app.add_handler(CallbackQueryHandler(manage_experiences_command, pattern=ADMIN_MANAGE_EXPERIENCES))
@@ -1099,12 +1117,6 @@ ptb_app.add_handler(CallbackQueryHandler(admin_pending_reviews_callback, pattern
 ptb_app.add_handler(CallbackQueryHandler(admin_pending_detail_callback, pattern=ADMIN_PENDING_EXPERIENCE_DETAIL))
 ptb_app.add_handler(CallbackQueryHandler(search_results_page_callback, pattern=ADMIN_SEARCH_RESULTS_PAGE))
 ptb_app.add_handler(CallbackQueryHandler(admin_search_detail_callback, pattern=ADMIN_SEARCH_DETAIL))
-
-# User search handlers
-ptb_app.add_handler(CallbackQueryHandler(show_user_search_result, pattern=USER_SEARCH_RESULT))
-
-# Global text handler for search (must be one of the last handlers)
-ptb_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_global_search))
 
 async def on_startup(application: Application):
     application.job_queue.run_repeating(backup_database, interval=1800, first=15)

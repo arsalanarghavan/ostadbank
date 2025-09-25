@@ -7,7 +7,7 @@ from models import RequiredChannel, ExperienceStatus
 def main_menu():
     """Returns the main menu keyboard for regular users."""
     return ReplyKeyboardMarkup([
-        [db.get_text('btn_submit_experience')],
+        [db.get_text('btn_submit_experience'), db.get_text('btn_search')],
         [db.get_text('btn_my_experiences'), db.get_text('btn_rules')]
     ], resize_keyboard=True)
 
