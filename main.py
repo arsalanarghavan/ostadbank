@@ -118,9 +118,9 @@ def format_experience(exp: Experience, md_version: int = 2) -> str:
     def def_md(text):
         return escape_markdown(str(text), version=md_version)
 
-    # Helper function for creating safe tags
     def make_safe_tag(name: str) -> str:
         return name.replace('_', '').replace(' ', '_')
+
     field_name = def_md(exp.field.name)
     major_name = def_md(exp.major.name)
     professor_name = def_md(exp.professor.name)
@@ -132,11 +132,8 @@ def format_experience(exp: Experience, md_version: int = 2) -> str:
     exam = def_md(exp.exam)
     conclusion = def_md(exp.conclusion)
 
-    # Use the safe tag function
-    # ------------------- START: CORRECTED CODE -------------------
     tags = (f"\\#{def_md(make_safe_tag(exp.field.name))} \\#{def_md(make_safe_tag(exp.major.name))} "
             f"\\#{def_md(make_safe_tag(exp.professor.name))} \\#{def_md(make_safe_tag(exp.course.name))}")
-    # -------------------- END: CORRECTED CODE --------------------
             
     attendance_text = db.get_text('exp_format_attendance_yes') if exp.attendance_required else db.get_text('exp_format_attendance_no')
 
@@ -332,6 +329,7 @@ async def admin_panel_callback(update: Update, context: ContextTypes.DEFAULT_TYP
     await query.answer()
     await query.edit_message_text(db.get_text('admin_panel_welcome'), reply_markup=kb.admin_panel_main())
 
+# ------------------- START: CORRECTED FUNCTION -------------------
 async def experience_approval_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await check_admin(update, context): return
     query = update.callback_query
@@ -339,38 +337,45 @@ async def experience_approval_handler(update: Update, context: ContextTypes.DEFA
     data = query.data.split('_')
     action, exp_id_str = data[1], data[2]
     exp_id = int(exp_id_str)
-    exp = db.get_experience(exp_id)
-    if not exp:
-        await query.edit_message_text("این تجربه دیگر وجود ندارد.")
-        return
-    if action == "approve":
-        db.update_experience_status(exp_id, ExperienceStatus.APPROVED)
-        await context.bot.send_message(
-            chat_id=config.CHANNEL_ID, text=format_experience(exp), parse_mode=constants.ParseMode.MARKDOWN_V2
-        )
-        await query.edit_message_text(db.get_text('admin_approval_success', exp_id=exp_id))
-        try:
+    
+    with db.session_scope() as s:
+        exp = db.get_experience_with_session(s, exp_id)
+        if not exp:
+            await query.edit_message_text("این تجربه دیگر وجود ندارد.")
+            return
+
+        if action == "approve":
+            exp.status = ExperienceStatus.APPROVED
             await context.bot.send_message(
-                chat_id=exp.user_id, text=db.get_text('user_approval_notification', course_name=exp.course.name)
+                chat_id=config.CHANNEL_ID, text=format_experience(exp), parse_mode=constants.ParseMode.MARKDOWN_V2
             )
-        except Exception as e:
-            logger.warning(f"Could not notify user {exp.user_id} about approval: {e}")
-    elif action == "reject":
-        await query.edit_message_text(
-            db.get_text('rejection_reason_prompt'), reply_markup=kb.rejection_reasons_keyboard(exp_id)
-        )
-    elif action == "reason":
-        reason_key = f'btn_reject_reason_{data[3]}'
-        reason_text = db.get_text(reason_key)
-        db.update_experience_status(exp_id, ExperienceStatus.REJECTED)
-        await query.edit_message_text(db.get_text('admin_rejection_success', exp_id=exp_id, reason=reason_text))
-        try:
-            await context.bot.send_message(
-                chat_id=exp.user_id,
-                text=db.get_text('user_rejection_notification', course_name=exp.course.name, reason=reason_text)
+            await query.edit_message_text(db.get_text('admin_approval_success', exp_id=exp_id))
+            try:
+                await context.bot.send_message(
+                    chat_id=exp.user_id, text=db.get_text('user_approval_notification', course_name=exp.course.name)
+                )
+            except Exception as e:
+                logger.warning(f"Could not notify user {exp.user_id} about approval: {e}")
+
+        elif action == "reject":
+            await query.edit_message_text(
+                db.get_text('rejection_reason_prompt'), reply_markup=kb.rejection_reasons_keyboard(exp_id)
             )
-        except Exception as e:
-            logger.warning(f"Could not notify user {exp.user_id} about rejection: {e}")
+
+        elif action == "reason":
+            reason_key = f'btn_reject_reason_{data[3]}'
+            reason_text = db.get_text(reason_key)
+            exp.status = ExperienceStatus.REJECTED
+            await query.edit_message_text(db.get_text('admin_rejection_success', exp_id=exp_id, reason=reason_text))
+            try:
+                await context.bot.send_message(
+                    chat_id=exp.user_id,
+                    text=db.get_text('user_rejection_notification', course_name=exp.course.name, reason=reason_text)
+                )
+            except Exception as e:
+                logger.warning(f"Could not notify user {exp.user_id} about rejection: {e}")
+# -------------------- END: CORRECTED FUNCTION --------------------
+
 
 async def show_stats_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await check_admin(update, context): return
