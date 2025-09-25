@@ -1,4 +1,4 @@
-# keyboards.py (Final Corrected Version)
+# keyboards.py
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup
 import database as db
@@ -24,7 +24,8 @@ def my_experiences_keyboard(experiences, current_page, total_pages):
     for exp in experiences:
         status_emoji = status_map.get(exp['status'], '❔')
         button_text = f"{status_emoji} {exp['course_name']} - {exp['professor_name']}"
-        keyboard.append([InlineKeyboardButton(button_text, callback_data=f"exp_detail_{exp['id']}")])
+        # Pass the current page to the detail callback
+        keyboard.append([InlineKeyboardButton(button_text, callback_data=f"exp_detail_{current_page}_{exp['id']}")])
 
     pagination_row = []
     if current_page > 1:
@@ -45,18 +46,16 @@ def experience_detail_keyboard(experience_id, page=1):
     ]
     return InlineKeyboardMarkup(keyboard)
 
-# ------------------- START: NEW FUNCTION -------------------
 def confirm_edit_keyboard(experience_id, page=1):
     """Asks the user to confirm the deletion and resubmission of an experience."""
     keyboard = [
         [
             InlineKeyboardButton("✅ بله، ویرایش کن", callback_data=f"confirm_edit_{experience_id}_{page}"),
-            InlineKeyboardButton("❌ خیر", callback_data=f"exp_detail_{experience_id}")
+            # Go back to the detail view, not the list
+            InlineKeyboardButton("❌ خیر", callback_data=f"exp_detail_{page}_{experience_id}")
         ]
     ]
     return InlineKeyboardMarkup(keyboard)
-# -------------------- END: NEW FUNCTION --------------------
-
 
 def admin_panel_main():
     """Returns the main keyboard for the admin panel."""

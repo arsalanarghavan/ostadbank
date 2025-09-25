@@ -200,9 +200,7 @@ async def experience_detail_callback(update: Update, context: ContextTypes.DEFAU
     
     parts = query.data.split('_')
     exp_id = int(parts[-1])
-    page = 1
-    if len(parts) > 2 and parts[-2].isdigit():
-        page = int(parts[-2])
+    page = int(parts[-2])
 
     with db.session_scope() as s:
         exp = db.get_experience_with_session(s, exp_id)
