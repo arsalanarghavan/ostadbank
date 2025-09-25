@@ -270,7 +270,7 @@ def search_experiences_for_inline(query_str: str, limit=10):
                 )\
                 .order_by(Experience.created_at.desc())\
                 .limit(limit).all()
-        s.expunge_all()
+        # s.expunge_all() # <-- THIS LINE IS REMOVED
         return exps
 
 def get_paginated_list(model, page=1, per_page=8):
@@ -319,6 +319,8 @@ def get_experience(exp_id):
             joinedload(Experience.professor),
             joinedload(Experience.course)
         ).filter(Experience.id == exp_id).first()
+        # if exp:  <-- THIS BLOCK IS REMOVED
+        #     s.expunge(exp)
         return exp
 
 def get_user_experiences(user_id, page=1, per_page=10):
