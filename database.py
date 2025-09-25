@@ -270,6 +270,7 @@ def search_experiences_for_inline(query_str: str, limit=10):
                 )\
                 .order_by(Experience.created_at.desc())\
                 .limit(limit).all()
+        s.expunge_all()
         return exps
 
 def get_paginated_list(model, page=1, per_page=8):
