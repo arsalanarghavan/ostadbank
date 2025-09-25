@@ -1,5 +1,3 @@
-# main.py (نسخه نهایی و کامل)
-
 import logging
 import asyncio
 import datetime
@@ -120,6 +118,9 @@ def format_experience(exp: Experience, md_version: int = 2) -> str:
     def def_md(text):
         return escape_markdown(str(text), version=md_version)
 
+    # Helper function for creating safe tags
+    def make_safe_tag(name: str) -> str:
+        return name.replace('_', '').replace(' ', '_')
     field_name = def_md(exp.field.name)
     major_name = def_md(exp.major.name)
     professor_name = def_md(exp.professor.name)
@@ -130,7 +131,11 @@ def format_experience(exp: Experience, md_version: int = 2) -> str:
     attendance_details = def_md(exp.attendance_details)
     exam = def_md(exp.exam)
     conclusion = def_md(exp.conclusion)
-    tags = f"\\#{exp.field.name.replace(' ', '_')} \\#{exp.major.name.replace(' ', '_')} \\#{exp.professor.name.replace(' ', '_')} \\#{exp.course.name.replace(' ', '_')}"
+
+    # Use the safe tag function
+    tags = (f"\\#{make_safe_tag(exp.field.name)} \\#{make_safe_tag(exp.major.name)} "
+            f"\\#{make_safe_tag(exp.professor.name)} \\#{make_safe_tag(exp.course.name)}")
+            
     attendance_text = db.get_text('exp_format_attendance_yes') if exp.attendance_required else db.get_text('exp_format_attendance_no')
 
     return (f"{db.get_text('exp_format_field')}: {field_name} \\({major_name}\\)\n"
@@ -143,7 +148,6 @@ def format_experience(exp: Experience, md_version: int = 2) -> str:
             f"{db.get_text('exp_format_exam')}:\n{exam}\n"
             f"{db.get_text('exp_format_conclusion')}:\n{conclusion}\n"
             f"{def_md(db.get_text('exp_format_footer'))}\n{db.get_text('exp_format_tags')}: {tags}")
-
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     db.add_user(update.effective_user.id, update.effective_user.first_name)
     if await check_channel_membership(update, context):
@@ -289,7 +293,6 @@ async def get_conclusion_and_finish(update: Update, context: ContextTypes.DEFAUL
 
         s.refresh(new_exp, attribute_names=['field', 'major', 'professor', 'course'])
         
-        # لایه محافظتی اضافه شد: متن دیتابیس هم escape می‌شود
         notification_text = escape_markdown(db.get_text('admin_new_experience_notification', exp_id=new_exp.id), version=2)
         admin_message = notification_text + format_experience(new_exp)
         
