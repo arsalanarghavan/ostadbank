@@ -121,13 +121,11 @@ async def check_channel_membership(update: Update, context: ContextTypes.DEFAULT
         )
     return is_member_of_all
 
-# ----------------- START: تابع اصلاح شده -----------------
+# ----------------- START: تابع format_experience (اصلاح نهایی) -----------------
 def format_experience(exp: Experience, md_version: int = 2) -> str:
-    # تابع escape_markdown را مستقیما اینجا استفاده می‌کنیم
     def def_md(text):
         return escape_markdown(str(text), version=md_version)
 
-    # تمام متغیرها را ابتدا escape می‌کنیم
     field_name = def_md(exp.field.name)
     major_name = def_md(exp.major.name)
     professor_name = def_md(exp.professor.name)
@@ -139,12 +137,10 @@ def format_experience(exp: Experience, md_version: int = 2) -> str:
     exam = def_md(exp.exam)
     conclusion = def_md(exp.conclusion)
 
-    # تگ‌ها نیازی به escape ندارند چون خودمان می‌سازیمشان و # را escape می‌کنیم
     tags = f"\\#{exp.field.name.replace(' ', '_')} \\#{exp.major.name.replace(' ', '_')} \\#{exp.professor.name.replace(' ', '_')} \\#{exp.course.name.replace(' ', '_')}"
-
     attendance_text = db.get_text('exp_format_attendance_yes') if exp.attendance_required else db.get_text('exp_format_attendance_no')
 
-    # حالا متن نهایی را با متغیرهای escape شده می‌سازیم
+    # پرانتزها با \\ escape شده‌اند
     return (f"{db.get_text('exp_format_field')}: {field_name} \\({major_name}\\)\n"
             f"{db.get_text('exp_format_professor')}: {professor_name}\n"
             f"{db.get_text('exp_format_course')}: {course_name}\n"
@@ -155,7 +151,7 @@ def format_experience(exp: Experience, md_version: int = 2) -> str:
             f"{db.get_text('exp_format_exam')}:\n{exam}\n"
             f"{db.get_text('exp_format_conclusion')}:\n{conclusion}\n"
             f"{def_md(db.get_text('exp_format_footer'))}\n{db.get_text('exp_format_tags')}: {tags}")
-# ----------------- END: تابع اصلاح شده -----------------
+# ----------------- END: تابع format_experience -----------------
 
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     db.add_user(update.effective_user.id, update.effective_user.first_name)
@@ -172,7 +168,7 @@ async def membership_check_callback(update: Update, context: ContextTypes.DEFAUL
             text=db.get_text('welcome'),
             reply_markup=kb.main_menu()
         )
-
+# ----------------- START: تابع my_experiences_command (اصلاح نهایی) -----------------
 async def my_experiences_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await check_channel_membership(update, context): return
     exps = db.get_user_experiences(update.effective_user.id)
@@ -189,8 +185,10 @@ async def my_experiences_command(update: Update, context: ContextTypes.DEFAULT_T
         course_name = escape_markdown(exp.course.name, version=2)
         prof_name = escape_markdown(exp.professor.name, version=2)
         status_text = status_map.get(exp.status, str(exp.status))
-        response += f"*{course_name}* \\- *{prof_name}* ({status_text})\n"
+        # پرانتزها با \\ escape شده‌اند
+        response += f"*{course_name}* \\- *{prof_name}* \\({status_text}\\)\n"
     await update.message.reply_text(response, parse_mode=constants.ParseMode.MARKDOWN_V2)
+# ----------------- END: تابع my_experiences_command -----------------
 
 async def rules_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await check_channel_membership(update, context): return
@@ -285,7 +283,7 @@ async def get_attendance_details(update: Update, context: ContextTypes.DEFAULT_T
 async def get_exam(update: Update, context: ContextTypes.DEFAULT_TYPE) -> States:
     return await get_text_input(update, context, 'exam', States.GETTING_CONCLUSION, 'ask_conclusion')
 
-# ----------------- START: تابع اصلاح شده -----------------
+# ----------------- START: تابع get_conclusion_and_finish (اصلاح شده) -----------------
 async def get_conclusion_and_finish(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     user_input = update.message.text
     if len(user_input) > 1000:
@@ -297,22 +295,16 @@ async def get_conclusion_and_finish(update: Update, context: ContextTypes.DEFAUL
     user = update.effective_user
     exp_data['user_id'] = user.id
 
-    # تمام عملیات دیتابیس را در یک session واحد انجام می‌دهیم تا خطا رخ ندهد
     with db.session_scope() as s:
-        # 1. یک شیء Experience جدید می‌سازیم
         new_exp = Experience(**exp_data)
         s.add(new_exp)
-        s.flush()  # برای اینکه new_exp.id مقدار بگیرد
+        s.flush()  
 
-        # 2. شیء را با تمام روابطش (relationships) رفرش می‌کنیم
-        # این کار تضمین می‌کند که به field, major و... دسترسی داریم
         s.refresh(new_exp, attribute_names=['field', 'major', 'professor', 'course'])
         
-        # 3. حالا پیام ادمین را با شیء متصل به session می‌سازیم
         admin_message = db.get_text('admin_new_experience_notification', exp_id=new_exp.id) + format_experience(new_exp)
         
-        # 4. پیام‌ها را برای ادمین‌ها ارسال می‌کنیم
-        for admin in s.query(Admin).all(): # از همین session برای کوئری ادمین‌ها استفاده می‌کنیم
+        for admin in s.query(Admin).all(): 
             try:
                 await context.bot.send_message(
                     chat_id=admin.user_id, text=admin_message,
@@ -325,7 +317,7 @@ async def get_conclusion_and_finish(update: Update, context: ContextTypes.DEFAUL
     await update.message.reply_text(db.get_text('submission_success'), reply_markup=kb.main_menu())
     context.user_data.clear()
     return ConversationHandler.END
-# ----------------- END: تابع اصلاح شده -----------------
+# ----------------- END: تابع get_conclusion_and_finish -----------------
 
 async def cancel_submission(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     query = update.callback_query
