@@ -94,10 +94,11 @@ class Experience(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
-    field = relationship("Field")
-    major = relationship("Major")
-    professor = relationship("Professor")
-    course = relationship("Course")
+    # --- CHANGE IS HERE ---
+    field = relationship("Field", lazy="joined")
+    major = relationship("Major", lazy="joined")
+    professor = relationship("Professor", lazy="joined")
+    course = relationship("Course", lazy="joined")
 
 class RequiredChannel(Base):
     __tablename__ = 'required_channels'
