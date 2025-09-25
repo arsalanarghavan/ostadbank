@@ -132,7 +132,8 @@ class Setting(Base):
     key = Column(String(255), unique=True, nullable=False)
     value = Column(String(255), nullable=False)
 
-engine = create_engine(DATABASE_URL, echo=False, connect_args={'charset': 'utf8mb4'})
+# This is the critical change: adding encoding='utf-8'
+engine = create_engine(DATABASE_URL, echo=False, connect_args={'charset': 'utf8mb4'}, encoding='utf-8')
 
 def create_tables():
     """Creates all tables in the database based on the models."""
