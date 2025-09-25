@@ -1,4 +1,4 @@
-# database.py
+# database.py (Final Corrected Version)
 
 from sqlalchemy.orm import sessionmaker, joinedload
 from contextlib import contextmanager
@@ -81,25 +81,25 @@ def initialize_database():
             'exp_format_attendance_no': 'ندارد',
             'exp_format_exam': '⭕️ امتحان',
             'exp_format_conclusion': '⚠️ نتیجه گیری',
+
+            # ----------------- START: Final Corrected Text -----------------
             'exp_format_footer': """➖➖➖➖➖➖➖➖➖➖
 ❗️دوستانی که مایل به معرفی استاد هستن، می‌تونند با ما در ارتباط باشن تا استادشون رو معرفی کنیم و به بقیه کمک بشه برای انتخاب واحد بهتر.
 
 #همیار_هم_باشیم
 
 آدرس کانال:
-🆔 @Shamsi_OstadBank
+🆔 @ShamsiOstadBank
 ثبت تجربه شما:
-🆔 @Shamsi_OstadBank_Bot
+🆔 @ShamsiOstadBankBot
 ➖➖➖➖➖➖➖➖➖➖""",
+            # ----------------- END: Final Corrected Text -----------------
+            
             'exp_format_tags': '♊️ تگ‌ها',
             'status_pending': '⏳ در انتظار تایید',
             'status_approved': '✅ تایید شده',
             'status_rejected': '❌ رد شده',
-            
-            # ----------------- START: خط اصلاح شده -----------------
             'admin_new_experience_notification': 'یک تجربه جدید برای بررسی ثبت شد - ID: {exp_id}\n\n',
-            # ----------------- END: خط اصلاح شده -----------------
-            
             'admin_recheck_experience': 'بررسی مجدد تجربه ID: {exp_id}\n\n',
             'admin_approval_success': '✅ تجربه با ID {exp_id} تایید و در کانال منتشر شد.',
             'admin_rejection_success': '❌ تجربه با ID {exp_id} به دلیل «{reason}» رد شد.',
@@ -171,7 +171,6 @@ def get_paginated_list(model, page=1, per_page=8):
         offset = (page - 1) * per_page
         items = query.limit(per_page).offset(offset).all()
 
-        # Convert ORM objects to a list of dicts to make them session-independent
         results = []
         for item in items:
             item_dict = {}
@@ -209,7 +208,6 @@ def get_experience(exp_id):
 def get_user_experiences(user_id):
     """Get all experiences submitted by a specific user."""
     with session_scope() as s:
-        # Eagerly load relationships to prevent DetachedInstanceError later
         exps = s.query(Experience).options(
             joinedload(Experience.course),
             joinedload(Experience.professor)
@@ -221,7 +219,7 @@ def add_item(model, **kwargs):
     with session_scope() as s:
         new_item = model(**kwargs)
         s.add(new_item)
-        s.flush() # Flush to get the ID of the new item
+        s.flush()
         return new_item.id
 
 def update_item(model, item_id, **kwargs):
