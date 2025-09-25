@@ -2,6 +2,7 @@ import logging
 import asyncio
 import datetime
 import os
+import re # ماژول re برای حذف ایموجی اضافه شد
 from telegram import Update, constants, ChatMember, InlineKeyboardMarkup
 from telegram.ext import (
     Application, CommandHandler, MessageHandler, ConversationHandler,
@@ -114,13 +115,34 @@ async def check_channel_membership(update: Update, context: ContextTypes.DEFAULT
         )
     return is_member_of_all
 
+# START OF CHANGE - تابع فرمت‌بندی به طور کامل اصلاح شد
 def format_experience(exp: Experience, md_version: int = 2) -> str:
     def def_md(text):
         return escape_markdown(str(text), version=md_version)
 
-    def make_safe_tag(name: str) -> str:
-        return name.replace('_', '').replace(' ', '_')
+    def remove_emojis(text):
+        # این تابع ایموجی‌ها را از متن حذف می‌کند
+        emoji_pattern = re.compile(
+            "["
+            "\U0001F600-\U0001F64F"  # emoticons
+            "\U0001F300-\U0001F5FF"  # symbols & pictographs
+            "\U0001F680-\U0001F6FF"  # transport & map symbols
+            "\U0001F700-\U0001F77F"  # alchemical symbols
+            "\U0001F780-\U0001F7FF"  # Geometric Shapes Extended
+            "\U0001F800-\U0001F8FF"  # Supplemental Arrows-C
+            "\U0001F900-\U0001F9FF"  # Supplemental Symbols and Pictographs
+            "\U0001FA00-\U0001FA6F"  # Chess Symbols
+            "\U0001FA70-\U0001FAFF"  # Symbols and Pictographs Extended-A
+            "\U00002702-\U000027B0"  # Dingbats
+            "\U000024C2-\U0001F251" 
+            "]+", flags=re.UNICODE)
+        return emoji_pattern.sub(r'', text).strip()
 
+    def make_safe_tag(name: str) -> str:
+        # ایموجی‌ها حذف شده و فاصله با آندرلاین جایگزین می‌شود
+        return remove_emojis(name).replace(' ', '_').replace('-', '_')
+
+    # دریافت مقادیر از دیتابیس
     field_name = def_md(exp.field.name)
     major_name = def_md(exp.major.name)
     professor_name = def_md(exp.professor.name)
@@ -132,21 +154,26 @@ def format_experience(exp: Experience, md_version: int = 2) -> str:
     exam = def_md(exp.exam)
     conclusion = def_md(exp.conclusion)
 
-    tags = (f"\\#{def_md(make_safe_tag(exp.field.name))} \\#{def_md(make_safe_tag(exp.major.name))} "
-            f"\\#{def_md(make_safe_tag(exp.professor.name))} \\#{def_md(make_safe_tag(exp.course.name))}")
+    # ساخت تگ‌ها بدون ایموجی
+    tags = (f"\\#{make_safe_tag(exp.field.name)} \\#{make_safe_tag(exp.major.name)} "
+            f"\\#{make_safe_tag(exp.professor.name)} \\#{make_safe_tag(exp.course.name)}")
             
-    attendance_text = db.get_text('exp_format_attendance_yes') if exp.attendance_required else db.get_text('exp_format_attendance_no')
-
-    return (f"{db.get_text('exp_format_field')}: {field_name} \\({major_name}\\)\n"
-            f"{db.get_text('exp_format_professor')}: {professor_name}\n"
-            f"{db.get_text('exp_format_course')}: {course_name}\n"
-            f"{db.get_text('exp_format_teaching')}:\n{teaching_style}\n"
-            f"{db.get_text('exp_format_notes')}:\n{notes}\n"
-            f"{db.get_text('exp_format_project')}:\n{project}\n"
-            f"{db.get_text('exp_format_attendance')}: {attendance_text}\n{attendance_details}\n"
-            f"{db.get_text('exp_format_exam')}:\n{exam}\n"
-            f"{db.get_text('exp_format_conclusion')}:\n{conclusion}\n"
-            f"{def_md(db.get_text('exp_format_footer'))}\n{db.get_text('exp_format_tags')}: {tags}")
+    # متن حضور و غیاب
+    attendance_status = db.get_text('exp_format_attendance_yes') if exp.attendance_required else db.get_text('exp_format_attendance_no')
+    
+    # فرمت‌بندی نهایی مطابق با نمونه
+    return (f"*{db.get_text('exp_format_field')}*: {field_name} \\({major_name}\\)\n\n"
+            f"*{db.get_text('exp_format_professor')}*: {professor_name}\n\n"
+            f"*{db.get_text('exp_format_course')}*: {course_name}\n\n"
+            f"*{db.get_text('exp_format_teaching')}*:\n{teaching_style}\n\n"
+            f"*{db.get_text('exp_format_notes')}*:\n{notes}\n\n"
+            f"*{db.get_text('exp_format_project')}*:\n{project}\n\n"
+            f"*{db.get_text('exp_format_attendance')}*: {attendance_status} \\- {attendance_details}\n\n"
+            f"*{db.get_text('exp_format_exam')}*:\n{exam}\n\n"
+            f"*{db.get_text('exp_format_conclusion')}*:\n{conclusion}\n\n"
+            f"{def_md(db.get_text('exp_format_footer'))}\n\n"
+            f"*{db.get_text('exp_format_tags')}*: {tags}")
+# END OF CHANGE
 
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     db.add_user(update.effective_user.id, update.effective_user.first_name)
@@ -260,7 +287,6 @@ async def edit_experience_callback(update: Update, context: ContextTypes.DEFAULT
             await query.edit_message_text("✅ تجربه شما با موفقیت برای بازبینی مجدد به ادمین‌ها ارسال شد.", reply_markup=kb.experience_detail_keyboard(exp_id, page))
 
         elif exp.status == ExperienceStatus.PENDING:
-            # START OF CHANGE - این بخش اصلاح شده است
             text_part1 = "⚠️ **آیا از ویرایش این تجربه مطمئن هستید؟**\n\n"
             text_part2 = "تجربه فعلی شما حذف و فرآیند ثبت مجدد از ابتدا آغاز خواهد شد."
             final_text = text_part1 + escape_markdown(text_part2, version=2)
@@ -269,7 +295,6 @@ async def edit_experience_callback(update: Update, context: ContextTypes.DEFAULT
                 parse_mode=constants.ParseMode.MARKDOWN_V2,
                 reply_markup=kb.confirm_edit_keyboard(exp_id, page)
             )
-            # END OF CHANGE
 
 async def edit_experience_confirm_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     query = update.callback_query
