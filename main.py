@@ -260,11 +260,16 @@ async def edit_experience_callback(update: Update, context: ContextTypes.DEFAULT
             await query.edit_message_text("✅ تجربه شما با موفقیت برای بازبینی مجدد به ادمین‌ها ارسال شد.", reply_markup=kb.experience_detail_keyboard(exp_id, page))
 
         elif exp.status == ExperienceStatus.PENDING:
+            # START OF CHANGE - این بخش اصلاح شده است
+            text_part1 = "⚠️ **آیا از ویرایش این تجربه مطمئن هستید؟**\n\n"
+            text_part2 = "تجربه فعلی شما حذف و فرآیند ثبت مجدد از ابتدا آغاز خواهد شد."
+            final_text = text_part1 + escape_markdown(text_part2, version=2)
             await query.edit_message_text(
-                "⚠️ **آیا از ویرایش این تجربه مطمئن هستید؟**\n\nتجربه فعلی شما حذف و فرآیند ثبت مجدد از ابتدا آغاز خواهد شد.",
+                text=final_text,
                 parse_mode=constants.ParseMode.MARKDOWN_V2,
                 reply_markup=kb.confirm_edit_keyboard(exp_id, page)
             )
+            # END OF CHANGE
 
 async def edit_experience_confirm_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     query = update.callback_query
