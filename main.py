@@ -911,7 +911,7 @@ async def admin_search_detail_callback(update: Update, context: ContextTypes.DEF
 
 async def user_search_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> States:
     """Starts the user search conversation."""
-    await update.message.reply_text(db.get_text(USER_SEARCH_PROMPT_KEY))
+    await update.message.reply_text(db.get_text(USER_SEARCH_PROMPT_KEY), reply_markup=ReplyKeyboardRemove())
     return States.GETTING_USER_SEARCH_QUERY
 
 async def user_search_receive_query(update: Update, context: ContextTypes.DEFAULT_TYPE) -> States:
@@ -925,7 +925,7 @@ async def user_search_receive_query(update: Update, context: ContextTypes.DEFAUL
 
     keyboard = kb.user_search_inline_keyboard(experiences)
     await update.message.reply_text(db.get_text(USER_SEARCH_HEADER_KEY, query=query_str), reply_markup=keyboard)
-    return States.GETTING_USER_SEARCH_QUERY
+    return ConversationHandler.END
         
 async def show_user_search_result(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Callback function to show a selected search result."""
@@ -938,8 +938,10 @@ async def show_user_search_result(update: Update, context: ContextTypes.DEFAULT_
     if exp:
         await query.message.reply_text(
             format_experience(exp, md_version=2),
-            parse_mode=constants.ParseMode.MARKDOWN_V2
+            parse_mode=constants.ParseMode.MARKDOWN_V2,
+            reply_markup=kb.main_menu()
         )
+        await query.message.delete()
     else:
         await query.message.reply_text("متاسفانه این تجربه پیدا نشد.")
 
