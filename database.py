@@ -312,12 +312,15 @@ def get_all_items_by_parent(model, parent_id_field, parent_id):
 
 def get_experience(exp_id):
     with session_scope() as s:
-        return s.query(Experience).options(
+        exp = s.query(Experience).options(
             joinedload(Experience.field),
             joinedload(Experience.major),
             joinedload(Experience.professor),
             joinedload(Experience.course)
         ).filter(Experience.id == exp_id).first()
+        if exp:
+            s.expunge(exp)
+        return exp
 
 def get_user_experiences(user_id, page=1, per_page=10):
     with session_scope() as s:
