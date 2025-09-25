@@ -53,7 +53,6 @@ def admin_pending_experiences_keyboard(experiences, current_page, total_pages):
     keyboard.append([InlineKeyboardButton(db.get_text('btn_back_to_panel'), callback_data="admin_manage_experiences")])
     return InlineKeyboardMarkup(keyboard)
 
-# START OF CHANGE - کیبورد جدید برای نتایج جستجو
 def admin_search_results_keyboard(experiences, query, current_page, total_pages):
     keyboard = []
     
@@ -66,7 +65,6 @@ def admin_search_results_keyboard(experiences, query, current_page, total_pages)
     for exp in experiences:
         status_emoji = status_map.get(exp['status'], '❔')
         button_text = f"{status_emoji} ID: {exp['id']} - {exp['course_name']}"
-        # Pass the current page and query to the detail callback
         keyboard.append([InlineKeyboardButton(button_text, callback_data=f"admin_search_detail_{current_page}_{exp['id']}")])
 
     pagination_row = []
@@ -80,7 +78,6 @@ def admin_search_results_keyboard(experiences, query, current_page, total_pages)
 
     keyboard.append([InlineKeyboardButton(db.get_text('btn_back_to_panel'), callback_data="admin_manage_experiences")])
     return InlineKeyboardMarkup(keyboard)
-# END OF CHANGE
 
 def my_experiences_keyboard(experiences, current_page, total_pages):
     """Creates an inline keyboard for the user's experiences with pagination."""
@@ -230,7 +227,6 @@ def admin_approval_keyboard(experience_id, user, from_list_page=None, from_searc
         keyboard.append([InlineKeyboardButton(db.get_text('btn_back_to_list'), callback_data=back_callback)])
 
     return InlineKeyboardMarkup(keyboard)
-
 
 def rejection_reasons_keyboard(experience_id):
     keyboard = [

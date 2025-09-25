@@ -37,9 +37,8 @@ class States(Enum):
     GETTING_CHANNEL_ID_TO_ADD = auto()
     GETTING_CHANNEL_LINK_TO_ADD = auto()
 
-    # START OF CHANGE - حالت جدید برای جستجو
+    # Experience Search Flow
     GETTING_PROFESSOR_SEARCH_QUERY = auto()
-    # END OF CHANGE
 
 
 # --- Callback Data Patterns ---
@@ -67,12 +66,9 @@ ADMIN_TOGGLE_FORCE_SUB = r"^admin_toggle_force_sub$"
 ADMIN_MANAGE_EXPERIENCES = r"^admin_manage_experiences$"
 ADMIN_LIST_PENDING_EXPERIENCES = r"^admin_pending_exps_"
 ADMIN_PENDING_EXPERIENCE_DETAIL = r"^admin_pending_detail_"
-
-# START OF CHANGE - الگوهای جدید برای جستجو
 ADMIN_SEARCH_EXPERIENCES = r"^admin_search_exps$"
 ADMIN_SEARCH_RESULTS_PAGE = r"^admin_search_page_"
 ADMIN_SEARCH_DETAIL = r"^admin_search_detail_"
-# END OF CHANGE
 
 
 # CRUD patterns (Create, Read, Update, Delete)

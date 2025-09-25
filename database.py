@@ -146,11 +146,9 @@ def initialize_database():
             'btn_admin_search_edit': '🔍 جستجو و ویرایش نظرات',
             'admin_pending_header': '⏳ لیست نظرات در انتظار تایید:',
             'admin_no_pending_experiences': 'هیچ نظر جدیدی برای بررسی وجود ندارد.',
-            # START OF CHANGE - کلیدهای متنی جدید برای جستجو
             'admin_search_prompt': 'لطفا نام استاد مورد نظر را برای جستجو وارد کنید. می‌توانید بخشی از نام را نیز وارد کنید.',
             'admin_search_results_header': 'نتایج جستجو برای "{query}":',
             'admin_search_no_results': 'هیچ نتیجه‌ای برای "{query}" یافت نشد.'
-            # END OF CHANGE
         }
 
         for key, value in default_texts.items():
@@ -189,7 +187,6 @@ def get_experiences_by_status(status: ExperienceStatus, page=1, per_page=10):
             })
         return results, total_pages
 
-# START OF CHANGE - تابع جدید برای جستجوی نظرات
 def search_experiences_by_professor(query_str: str, page=1, per_page=10):
     with session_scope() as s:
         query = s.query(Experience).join(Professor).filter(Professor.name.like(f"%{query_str}%"))
@@ -214,8 +211,6 @@ def search_experiences_by_professor(query_str: str, page=1, per_page=10):
                 'status': exp.status
             })
         return results, total_pages
-# END OF CHANGE
-
 
 def get_paginated_list(model, page=1, per_page=8):
     with session_scope() as s:
