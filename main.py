@@ -133,8 +133,10 @@ def format_experience(exp: Experience, md_version: int = 2) -> str:
     conclusion = def_md(exp.conclusion)
 
     # Use the safe tag function
-    tags = (f"\\#{make_safe_tag(exp.field.name)} \\#{make_safe_tag(exp.major.name)} "
-            f"\\#{make_safe_tag(exp.professor.name)} \\#{make_safe_tag(exp.course.name)}")
+    # ------------------- START: CORRECTED CODE -------------------
+    tags = (f"\\#{def_md(make_safe_tag(exp.field.name))} \\#{def_md(make_safe_tag(exp.major.name))} "
+            f"\\#{def_md(make_safe_tag(exp.professor.name))} \\#{def_md(make_safe_tag(exp.course.name))}")
+    # -------------------- END: CORRECTED CODE --------------------
             
     attendance_text = db.get_text('exp_format_attendance_yes') if exp.attendance_required else db.get_text('exp_format_attendance_no')
 
@@ -148,6 +150,7 @@ def format_experience(exp: Experience, md_version: int = 2) -> str:
             f"{db.get_text('exp_format_exam')}:\n{exam}\n"
             f"{db.get_text('exp_format_conclusion')}:\n{conclusion}\n"
             f"{def_md(db.get_text('exp_format_footer'))}\n{db.get_text('exp_format_tags')}: {tags}")
+
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     db.add_user(update.effective_user.id, update.effective_user.first_name)
     if await check_channel_membership(update, context):
