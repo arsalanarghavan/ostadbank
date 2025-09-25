@@ -148,10 +148,7 @@ def format_experience(exp, md_version: int = 2, redacted=False) -> str:
 
     def make_safe_tag(name: str) -> str:
         text_no_emoji = remove_emojis(name)
-        # First, replace special Persian characters and dashes with a space
-        temp_name = re.sub(r'[\u200c\-_]+', ' ', text_no_emoji)
-        # Then, replace all sequences of whitespace with a single underscore
-        safe_name = re.sub(r'\s+', '_', temp_name)
+        safe_name = re.sub(r'[\s\u200c\-_]+', '_', text_no_emoji)
         return safe_name
 
     # Check if 'exp' is the dataclass or the SQLAlchemy model
