@@ -5,10 +5,29 @@ from sqlalchemy import (create_engine, Column, Integer, String, Text,
                         ForeignKey, Boolean, DateTime, Enum as EnumType, BigInteger)
 from sqlalchemy.orm import declarative_base, relationship
 from sqlalchemy.sql import func
+from dataclasses import dataclass
 
 from config import DATABASE_URL
 
 Base = declarative_base()
+
+@dataclass
+class ExperienceData:
+    """A dataclass to hold experience data independent of the session."""
+    id: int
+    user_id: int
+    teaching_style: str
+    notes: str
+    project: str
+    attendance_required: bool
+    attendance_details: str
+    exam: str
+    conclusion: str
+    status: str
+    field_name: str
+    major_name: str
+    professor_name: str
+    course_name: str
 
 class ExperienceStatus(str, enum.Enum):
     PENDING = "pending"
@@ -94,11 +113,10 @@ class Experience(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
-    # --- CHANGE IS HERE ---
-    field = relationship("Field", lazy="joined")
-    major = relationship("Major", lazy="joined")
-    professor = relationship("Professor", lazy="joined")
-    course = relationship("Course", lazy="joined")
+    field = relationship("Field")
+    major = relationship("Major")
+    professor = relationship("Professor")
+    course = relationship("Course")
 
 class RequiredChannel(Base):
     __tablename__ = 'required_channels'

@@ -6,7 +6,7 @@ from contextlib import contextmanager
 import math
 from models import (engine, User, Admin, BotText, Field,
                     Major, Professor, Course, Experience, ExperienceStatus,
-                    RequiredChannel, Setting)
+                    RequiredChannel, Setting, ExperienceData)
 import config
 
 Session = sessionmaker(bind=engine)
@@ -270,7 +270,6 @@ def search_experiences_for_inline(query_str: str, limit=10):
                 )\
                 .order_by(Experience.created_at.desc())\
                 .limit(limit).all()
-        # s.expunge_all() # <-- THIS LINE IS REMOVED
         return exps
 
 def get_paginated_list(model, page=1, per_page=8):
@@ -311,7 +310,8 @@ def get_all_items_by_parent(model, parent_id_field, parent_id):
         items = s.query(model).filter(getattr(model, parent_id_field) == parent_id).order_by(model.name).all()
         return [{'id': item.id, 'name': item.name} for item in items]
 
-def get_experience(exp_id):
+def get_experience(exp_id) -> ExperienceData | None:
+    """Fetches an experience and returns it as a session-independent dataclass."""
     with session_scope() as s:
         exp = s.query(Experience).options(
             joinedload(Experience.field),
@@ -319,9 +319,27 @@ def get_experience(exp_id):
             joinedload(Experience.professor),
             joinedload(Experience.course)
         ).filter(Experience.id == exp_id).first()
-        # if exp:  <-- THIS BLOCK IS REMOVED
-        #     s.expunge(exp)
-        return exp
+        
+        if not exp:
+            return None
+            
+        # Create a detached dataclass instance
+        return ExperienceData(
+            id=exp.id,
+            user_id=exp.user_id,
+            teaching_style=exp.teaching_style,
+            notes=exp.notes,
+            project=exp.project,
+            attendance_required=exp.attendance_required,
+            attendance_details=exp.attendance_details,
+            exam=exp.exam,
+            conclusion=exp.conclusion,
+            status=exp.status.value,
+            field_name=exp.field.name if exp.field else "",
+            major_name=exp.major.name if exp.major else "",
+            professor_name=exp.professor.name if exp.professor else "",
+            course_name=exp.course.name if exp.course else ""
+        )
 
 def get_user_experiences(user_id, page=1, per_page=10):
     with session_scope() as s:
