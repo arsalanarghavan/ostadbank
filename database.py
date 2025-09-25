@@ -218,14 +218,14 @@ def get_user_experiences(user_id, page=1, per_page=10):
             })
         return results, total_pages
 
-# START OF CHANGE - تابع add_item اصلاح شده است
+# START OF CHANGE - تابع add_item به شکل نهایی اصلاح شد
 def add_item(model, **kwargs):
     with session_scope() as s:
         new_item = model(**kwargs)
         s.add(new_item)
-        s.flush()  # ID را به شیء اختصاص می‌دهد
-        item_id = new_item.id  # ID را قبل از بسته شدن session ذخیره می‌کنیم
-        return s.query(model).get(item_id) # شیء کامل را بازمی‌گردانیم
+        s.flush() # ID را به شیء اختصاص می‌دهد
+        s.expunge(new_item) # شیء را از session جدا می‌کند
+    return new_item # شیء جدا شده را که ID آن مشخص است، بازمی‌گرداند
 # END OF CHANGE
 
 def update_item(model, item_id, **kwargs):
