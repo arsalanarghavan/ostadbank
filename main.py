@@ -35,7 +35,10 @@ from constants import (
     USER_SEARCH_HEADER_KEY, USER_SEARCH_PROMPT_KEY
 )
 
+# --- START OF IMPORTANT CHANGE ---
+# Configure logging to show INFO level messages which will help in debugging.
 logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO)
+# --- END OF IMPORTANT CHANGE ---
 logger = logging.getLogger(__name__)
 
 db.initialize_database()
@@ -146,32 +149,29 @@ def format_experience(exp, md_version: int = 2, redacted=False) -> str:
             "]+", flags=re.UNICODE)
         return emoji_pattern.sub(r'', text).strip()
 
+    # --- START OF THE FINAL FIX ---
     def make_safe_tag(name: str) -> str:
         """
-        این تابع یک تگ امن برای تلگرام با جداکننده آندرلاین می‌سازد.
-        به جای استفاده از regex یا replace، به صورت کاراکتر به کاراکتر پردازش می‌کند
-        تا از بروز مشکلات محیطی جلوگیری شود.
+        A robust function to create a safe hashtag from a string.
+        It replaces spaces, ZWNJ, and hyphens with a single underscore.
+        Also includes logging for debugging purposes.
         """
+        # Step 1: Remove emojis and leading/trailing whitespace
         text_no_emoji = remove_emojis(name)
-        safe_name = []
-        # پرچم برای جلوگیری از افزودن آندرلاین‌های متعدد پشت سر هم
-        last_char_was_underscore = False
         
-        for char in text_no_emoji:
-            # اگر کاراکتر یکی از جداکننده‌ها بود (فاصله، نیم‌فاصله، خط تیره)
-            if char in ' \u200c-':
-                if not last_char_was_underscore:
-                    safe_name.append('_')
-                    last_char_was_underscore = True
-            else:
-                safe_name.append(char)
-                last_char_was_underscore = False
+        # Step 2: Replace one or more occurrences of space, ZWNJ, or hyphen with a single underscore
+        # \s -> matches any whitespace character
+        # \u200c -> matches the Zero-Width Non-Joiner (نیم‌فاصله)
+        # - -> matches the hyphen
+        # + -> ensures that multiple separators in a row (e.g., "word1  word2") become one underscore
+        safe_name = re.sub(r'[\s\u200c-]+', '_', text_no_emoji)
         
-        # حذف آندرلاین‌های احتمالی از ابتدا و انتهای رشته
-        result = "".join(safe_name).strip('_')
-        return result
+        # Step 3: Log the transformation for debugging
+        logger.info(f"Tag transformation: Original='{name}' -> EmojiRemoved='{text_no_emoji}' -> FinalTag='{safe_name}'")
+        
+        return safe_name
+    # --- END OF THE FINAL FIX ---
 
-    # Check if 'exp' is the dataclass or the SQLAlchemy model
     is_dataclass = isinstance(exp, ExperienceData)
 
     field_name = def_md(exp.field_name if is_dataclass else exp.field.name)
