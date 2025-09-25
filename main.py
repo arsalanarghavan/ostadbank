@@ -1,17 +1,15 @@
-# main.py
-
 import logging
 import asyncio
 import datetime
 import os
-import re 
+import re
 from telegram import Update, constants, ChatMember, InlineKeyboardMarkup, ReplyKeyboardRemove
 from telegram.ext import (
     Application, CommandHandler, MessageHandler, ConversationHandler,
     CallbackQueryHandler, ContextTypes, filters, InlineQueryHandler
 )
 from telegram.helpers import escape_markdown
-from telegram.error import TelegramError
+from telegram.error import TelegramError, BadRequest
 from fastapi import FastAPI, Request, Response
 from contextlib import asynccontextmanager
 from uuid import uuid4
@@ -144,7 +142,7 @@ def format_experience(exp, md_version: int = 2, redacted=False) -> str:
             "\U0001FA00-\U0001FA6F"
             "\U0001FA70-\U0001FAFF"
             "\U00002702-\U000027B0"
-            "\U000024C2-\U0001F251" 
+            "\U000024C2-\U0001F251"
             "]+", flags=re.UNICODE)
         return emoji_pattern.sub(r'', text).strip()
 
@@ -640,11 +638,11 @@ async def delete_experience_content_callback(update: Update, context: ContextTyp
         )
         await query.answer(db.get_text('admin_content_deleted_success'), show_alert=True)
     except TelegramError as e:
-        logger.error(f"Failed to edit message in channel: {e}")
         # Gracefully handle the "Message is not modified" error
         if 'message is not modified' in str(e).lower():
             await query.answer("محتوا قبلاً حذف شده است.", show_alert=True)
         else:
+            logger.error(f"Failed to edit message in channel: {e}")
             await query.answer(f"خطا در ویرایش پیام: {e}", show_alert=True)
 
 async def broadcast_start_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> States:
@@ -656,14 +654,22 @@ async def broadcast_receive_message(update: Update, context: ContextTypes.DEFAUL
     users = db.get_all_users()
     sent_count, failed_count = 0, 0
     await update.message.reply_text(f"در حال ارسال پیام به {len(users)} کاربر...")
+    
     for user in users:
         try:
             await context.bot.copy_message(
-                chat_id=user.user_id, from_chat_id=update.message.chat_id, message_id=update.message.message_id
+                chat_id=user.user_id, 
+                from_chat_id=update.message.chat_id, 
+                message_id=update.message.message_id
             )
             sent_count += 1
-        except Exception:
+        except Exception as e:
+            logger.error(f"Failed to send broadcast to {user.user_id}: {e}")
             failed_count += 1
+        
+        # Add a small delay to avoid hitting rate limits
+        await asyncio.sleep(0.5) 
+            
     await update.message.reply_text(f"پیام به {sent_count} کاربر ارسال شد. {failed_count} ناموفق بود.")
     return ConversationHandler.END
 
@@ -1156,8 +1162,11 @@ app = FastAPI(lifespan=lifespan)
 @app.post(f"/{config.BOT_TOKEN}")
 async def webhook_handler(request: Request):
     update_data = await request.json()
-    update = Update.de_json(update_data, ptb_app.bot)
-    asyncio.create_task(ptb_app.process_update(update))
+    try:
+        update = Update.de_json(update_data, ptb_app.bot)
+        asyncio.create_task(ptb_app.process_update(update))
+    except Exception as e:
+        logger.error(f"Error processing update: {e}")
     return Response(content="OK", status_code=200)
 
 if __name__ == "__main__":
