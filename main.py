@@ -146,11 +146,14 @@ def format_experience(exp, md_version: int = 2, redacted=False) -> str:
             "]+", flags=re.UNICODE)
         return emoji_pattern.sub(r'', text).strip()
 
-def make_safe_tag(name: str) -> str:
+    def make_safe_tag(name: str) -> str:
+        # This function is now robust against various separators
         text_no_emoji = remove_emojis(name)
-        s1 = text_no_emoji.replace('\u200c', ' ')
-        s2 = re.sub(r'[\s\-_]+', '_', s1)
-        return s2
+        # Replace half-space, underscore, and hyphen with a standard space
+        standardized_separators = re.sub(r'[\u200c\-_]+', ' ', text_no_emoji)
+        # Replace any sequence of one or more whitespace characters with a single underscore
+        safe_name = re.sub(r'\s+', '_', standardized_separators)
+        return safe_name
 
     # Check if 'exp' is the dataclass or the SQLAlchemy model
     is_dataclass = isinstance(exp, ExperienceData)
