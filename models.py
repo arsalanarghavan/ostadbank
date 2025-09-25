@@ -1,8 +1,8 @@
-# models.py
+# models.py (Final Corrected Version)
 
 import enum
 from sqlalchemy import (create_engine, Column, Integer, String, Text,
-                        ForeignKey, Boolean, DateTime, Enum as EnumType)
+                        ForeignKey, Boolean, DateTime, Enum as EnumType, BigInteger) # Added BigInteger
 from sqlalchemy.orm import declarative_base, relationship
 from sqlalchemy.sql import func
 
@@ -10,17 +10,15 @@ from config import DATABASE_URL
 
 Base = declarative_base()
 
-# --- Enums for Data Integrity ---
 class ExperienceStatus(str, enum.Enum):
     PENDING = "pending"
     APPROVED = "approved"
     REJECTED = "rejected"
 
-# --- Table Models ---
 class User(Base):
     __tablename__ = 'users'
     id = Column(Integer, primary_key=True)
-    user_id = Column(Integer, unique=True, nullable=False, index=True) # Indexed for faster lookups
+    user_id = Column(BigInteger, unique=True, nullable=False, index=True)
     first_name = Column(String(255))
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
@@ -28,7 +26,7 @@ class User(Base):
 class Admin(Base):
     __tablename__ = 'admins'
     id = Column(Integer, primary_key=True)
-    user_id = Column(Integer, unique=True, nullable=False, index=True) # Indexed for faster lookups
+    user_id = Column(BigInteger, unique=True, nullable=False, index=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
@@ -77,7 +75,7 @@ class Course(Base):
 class Experience(Base):
     __tablename__ = 'experiences'
     id = Column(Integer, primary_key=True)
-    user_id = Column(Integer, nullable=False, index=True) # Indexed for faster lookups
+    user_id = Column(BigInteger, nullable=False, index=True)
     field_id = Column(Integer, ForeignKey('fields.id'))
     major_id = Column(Integer, ForeignKey('majors.id'))
     professor_id = Column(Integer, ForeignKey('professors.id'))
@@ -90,10 +88,11 @@ class Experience(Base):
     exam = Column(Text)
     conclusion = Column(Text)
     status = Column(EnumType(ExperienceStatus), default=ExperienceStatus.PENDING, nullable=False)
+    admin_message_id = Column(BigInteger, nullable=True) # To store the message ID for editing
+    admin_chat_id = Column(BigInteger, nullable=True) # To store the admin chat ID
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
-    # Relationships for easy access to related objects
     field = relationship("Field")
     major = relationship("Major")
     professor = relationship("Professor")
@@ -111,7 +110,6 @@ class Setting(Base):
     key = Column(String(255), unique=True, nullable=False)
     value = Column(String(255), nullable=False)
 
-# --- Database Engine Setup ---
 engine = create_engine(DATABASE_URL, echo=False, connect_args={'charset': 'utf8mb4'})
 
 def create_tables():

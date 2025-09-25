@@ -11,7 +11,6 @@ def main_menu():
         [db.get_text('btn_my_experiences'), db.get_text('btn_rules')]
     ], resize_keyboard=True)
 
-# ------------------- START: NEW FUNCTION -------------------
 def my_experiences_keyboard(experiences, current_page, total_pages):
     """Creates an inline keyboard for the user's experiences with pagination."""
     keyboard = []
@@ -37,6 +36,15 @@ def my_experiences_keyboard(experiences, current_page, total_pages):
         keyboard.append(pagination_row)
 
     return InlineKeyboardMarkup(keyboard)
+
+# ------------------- START: NEW FUNCTION -------------------
+def experience_detail_keyboard(experience_id):
+    """Creates the keyboard for the experience detail view, including an edit button."""
+    keyboard = [
+        [InlineKeyboardButton("✏️ ویرایش یا ارسال مجدد", callback_data=f"edit_exp_{experience_id}")],
+        [InlineKeyboardButton("🔙 بازگشت به لیست", callback_data="my_exps_1")]
+    ]
+    return InlineKeyboardMarkup(keyboard)
 # -------------------- END: NEW FUNCTION --------------------
 
 
@@ -55,12 +63,9 @@ def admin_panel_main():
         [InlineKeyboardButton("👮‍♂️ مدیریت ادمین‌ها", callback_data="admin_list_admin_1")]
     ]
     return InlineKeyboardMarkup(keyboard)
+# ... (rest of the functions remain the same) ...
 
 def admin_manage_item_list(items, prefix, current_page, total_pages):
-    """
-    Creates a paginated list of items for the admin panel (Fields, Majors, etc.).
-    `items` is now a list of dictionaries.
-    """
     keyboard = []
     for item in items:
         name = item.get('name') or f"Admin ID: {item.get('user_id')}"
@@ -92,10 +97,6 @@ def admin_manage_item_list(items, prefix, current_page, total_pages):
     return InlineKeyboardMarkup(keyboard)
 
 def admin_manage_texts_list(texts, current_page, total_pages):
-    """
-    Creates a paginated list of bot texts for editing.
-    `texts` is now a list of dictionaries.
-    """
     keyboard = []
     for text_item in texts:
         key = text_item['key']
@@ -127,19 +128,11 @@ def back_to_list_keyboard(prefix, page=1, is_main_panel=False):
     return InlineKeyboardMarkup([[InlineKeyboardButton(db.get_text('btn_back_to_list'), callback_data=f"admin_list_{list_prefix}_{page}")]])
 
 def parent_field_selection_keyboard(fields, prefix, page=1):
-    """
-    Returns a keyboard for selecting a parent field.
-    `fields` is a list of dictionaries.
-    """
     keyboard = [[InlineKeyboardButton(f['name'], callback_data=f"{prefix}_selectfield_{f['id']}_{page}")] for f in fields]
     keyboard.append([InlineKeyboardButton(db.get_text('btn_cancel'), callback_data=f"admin_list_{prefix}_{page}")])
     return InlineKeyboardMarkup(keyboard)
 
 def dynamic_list_keyboard(items, prefix, has_add_new=False):
-    """
-    Creates a dynamic list of items for the user submission flow.
-    `items` is a list of dictionaries.
-    """
     keyboard = []
     for item in items:
         keyboard.append([InlineKeyboardButton(item['name'], callback_data=f"{prefix}_select_{item['id']}")])

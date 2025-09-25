@@ -24,6 +24,7 @@ def session_scope():
     finally:
         session.close()
 
+# ... (initialize_database and other functions remain the same) ...
 def initialize_database():
     """Create database tables and populate default texts if they don't exist."""
     create_tables()
@@ -38,7 +39,7 @@ def initialize_database():
             'welcome': '🤖 سلام! به ربات بانک اساتید خوش آمدید. با این ربات می‌توانید تجربه خود را از اساتید مختلف ثبت کنید و به دیگران در انتخاب واحد کمک کنید. برای شروع، یکی از گزینه‌های زیر را انتخاب کنید.',
             'rules': '📜 **قوانین و سوالات متداول:**\n\n۱. لطفا در بیان تجربیات خود صادق باشید.\n۲. از به کار بردن الفاظ توهین‌آمیز خودداری کنید.',
             'my_experiences_empty': 'شما هنوز تجربه‌ای ثبت نکرده‌اید.',
-            'my_experiences_header': '📜 **تجربه‌های ثبت شده شما:**\n\n',
+            'my_experiences_header': '📜 **تجربه‌های ثبت شده شما:**',
             'not_an_admin': '🚫 شما دسترسی لازم برای این کار را ندارید.',
             'operation_cancelled': 'عملیات لغو شد.',
             'item_added_successfully': '✅ آیتم جدید با موفقیت اضافه شد.',
@@ -143,7 +144,6 @@ def initialize_database():
                 session.add(BotText(key=key, value=value))
 
 def get_text(key, **kwargs):
-    """Fetch a text from the database by its key and format it."""
     with session_scope() as s:
         txt = s.query(BotText).filter_by(key=key).first()
         if not txt:
@@ -151,7 +151,6 @@ def get_text(key, **kwargs):
         return txt.value.format(**kwargs)
 
 def get_paginated_list(model, page=1, per_page=8):
-    """Get a paginated list of items and return them as a list of dicts."""
     with session_scope() as s:
         query = s.query(model)
         
@@ -181,18 +180,15 @@ def get_paginated_list(model, page=1, per_page=8):
         return results, total_pages
 
 def is_admin(user_id):
-    """Check if a user is an admin."""
     with session_scope() as s:
         return s.query(Admin).filter_by(user_id=user_id).first() is not None
 
 def get_all_items_by_parent(model, parent_id_field, parent_id):
-    """Get all items belonging to a parent and return as a list of dicts."""
     with session_scope() as s:
         items = s.query(model).filter(getattr(model, parent_id_field) == parent_id).order_by(model.name).all()
         return [{'id': item.id, 'name': item.name} for item in items]
 
 def get_experience(exp_id):
-    """Get a single experience and eagerly load related objects."""
     with session_scope() as s:
         return s.query(Experience).options(
             joinedload(Experience.field),
@@ -201,12 +197,7 @@ def get_experience(exp_id):
             joinedload(Experience.course)
         ).get(exp_id)
 
-# ------------------- START: CORRECTED FUNCTION -------------------
 def get_user_experiences(user_id, page=1, per_page=10):
-    """
-    Get a paginated list of a user's experiences, ordered by creation date.
-    Returns a list of dictionaries and the total number of pages.
-    """
     with session_scope() as s:
         query = s.query(Experience).options(
             joinedload(Experience.course),
@@ -230,18 +221,15 @@ def get_user_experiences(user_id, page=1, per_page=10):
                 'status': exp.status
             })
         return results, total_pages
-# -------------------- END: CORRECTED FUNCTION --------------------
 
 def add_item(model, **kwargs):
-    """Add a new item to the database."""
     with session_scope() as s:
         new_item = model(**kwargs)
         s.add(new_item)
         s.flush()
-        return new_item.id
+        return new_item
 
 def update_item(model, item_id, **kwargs):
-    """Update an existing item in the database."""
     with session_scope() as s:
         item = s.query(model).get(item_id)
         if item:
@@ -251,22 +239,40 @@ def update_item(model, item_id, **kwargs):
         return False
 
 def update_experience_status(exp_id: int, status: ExperienceStatus):
-    """Update the status of an experience using the ExperienceStatus enum."""
     with session_scope() as s:
         exp = s.query(Experience).get(exp_id)
         if exp:
             exp.status = status
             return True
         return False
+        
+# ------------------- START: NEW FUNCTIONS -------------------
+def set_experience_admin_message_id(exp_id: int, message_id: int, chat_id: int):
+    """Saves the admin message ID and chat ID for a specific experience."""
+    with session_scope() as s:
+        exp = s.query(Experience).get(exp_id)
+        if exp:
+            exp.admin_message_id = message_id
+            exp.admin_chat_id = chat_id
+            return True
+        return False
+
+def reset_experience_status_for_resubmission(exp_id: int):
+    """Resets the status of an experience to PENDING for re-evaluation."""
+    with session_scope() as s:
+        exp = s.query(Experience).get(exp_id)
+        if exp:
+            exp.status = ExperienceStatus.PENDING
+            return True
+        return False
+# -------------------- END: NEW FUNCTIONS --------------------
 
 def add_user(user_id, first_name):
-    """Add a new user if they don't already exist."""
     with session_scope() as s:
         if not s.query(User).filter_by(user_id=user_id).first():
             s.add(User(user_id=user_id, first_name=first_name))
 
 def delete_item(model, item_id):
-    """Delete an item from the database."""
     with session_scope() as s:
         item = s.query(model).get(item_id)
         if item:
@@ -275,7 +281,6 @@ def delete_item(model, item_id):
         return False
 
 def get_item_name(model, item_id):
-    """Get the name of a single item by its ID."""
     with session_scope() as s:
         item = s.query(model).get(item_id)
         if not item:
@@ -287,12 +292,10 @@ def get_item_name(model, item_id):
         return f"ID: {item.id}"
 
 def get_all_users():
-    """Get all users from the database."""
     with session_scope() as s:
         return s.query(User).all()
 
 def get_statistics():
-    """Get various statistics from the database."""
     with session_scope() as s:
         stats = {
             'total_users': s.query(User).count(),
@@ -304,13 +307,11 @@ def get_statistics():
         return stats
 
 def get_setting(key, default=None):
-    """Get a setting value by its key."""
     with session_scope() as s:
         setting = s.query(Setting).filter_by(key=key).first()
         return setting.value if setting else default
 
 def set_setting(key, value):
-    """Set a setting value."""
     with session_scope() as s:
         setting = s.query(Setting).filter_by(key=key).first()
         if setting:
@@ -319,13 +320,11 @@ def set_setting(key, value):
             s.add(Setting(key=key, value=str(value)))
 
 def get_all_required_channels():
-    """Get all required channels from the database as dicts."""
     with session_scope() as s:
         channels = s.query(RequiredChannel).all()
         return [{'id': c.id, 'channel_id': c.channel_id, 'channel_link': c.channel_link} for c in channels]
 
 def get_experience_with_session(session, exp_id):
-    """Get a single experience using a provided session and eagerly load related objects."""
     return session.query(Experience).options(
         joinedload(Experience.field),
         joinedload(Experience.major),

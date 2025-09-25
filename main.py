@@ -2,7 +2,7 @@ import logging
 import asyncio
 import datetime
 import os
-from telegram import Update, constants, ChatMember
+from telegram import Update, constants, ChatMember, InlineKeyboardMarkup
 from telegram.ext import (
     Application, CommandHandler, MessageHandler, ConversationHandler,
     CallbackQueryHandler, ContextTypes, filters
@@ -164,7 +164,6 @@ async def membership_check_callback(update: Update, context: ContextTypes.DEFAUL
             reply_markup=kb.main_menu()
         )
 
-# ------------------- START: CORRECTED FUNCTION -------------------
 async def my_experiences_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await check_channel_membership(update, context):
         return
@@ -178,9 +177,7 @@ async def my_experiences_command(update: Update, context: ContextTypes.DEFAULT_T
     
     keyboard = kb.my_experiences_keyboard(experiences, 1, total_pages)
     await update.message.reply_text(db.get_text('my_experiences_header'), reply_markup=keyboard)
-# -------------------- END: CORRECTED FUNCTION --------------------
 
-# ------------------- START: NEW FUNCTION -------------------
 async def my_experiences_page_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -208,14 +205,55 @@ async def experience_detail_callback(update: Update, context: ContextTypes.DEFAU
         await query.edit_message_text("متاسفانه این تجربه پیدا نشد.")
         return
         
-    back_button = InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت به لیست", callback_data="my_exps_1")]])
+    keyboard = kb.experience_detail_keyboard(exp_id)
     await query.edit_message_text(
         format_experience(exp, md_version=2),
         parse_mode=constants.ParseMode.MARKDOWN_V2,
-        reply_markup=back_button
+        reply_markup=keyboard
     )
-# -------------------- END: NEW FUNCTION --------------------
 
+async def edit_experience_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handles the logic for editing or resubmitting an experience."""
+    query = update.callback_query
+    await query.answer()
+    exp_id = int(query.data.split('_')[-1])
+    
+    exp = db.get_experience(exp_id)
+    if not exp:
+        await query.edit_message_text("این تجربه پیدا نشد.")
+        return
+
+    if exp.status in [ExperienceStatus.REJECTED, ExperienceStatus.APPROVED]:
+        db.reset_experience_status_for_resubmission(exp_id)
+        
+        with db.session_scope() as s:
+            admins = s.query(Admin).all()
+            user = s.query(User).filter_by(user_id=exp.user_id).first()
+        
+        notification_text = f"*تجربه برای بررسی مجدد ارسال شد*\n\n" + escape_markdown(db.get_text('admin_new_experience_notification', exp_id=exp.id), version=2)
+        admin_message_text = notification_text + format_experience(exp)
+        
+        first_admin_message = None
+        for admin in admins:
+            try:
+                msg = await context.bot.send_message(
+                    chat_id=admin.user_id, 
+                    text=admin_message_text,
+                    reply_markup=kb.admin_approval_keyboard(exp.id, user),
+                    parse_mode=constants.ParseMode.MARKDOWN_V2
+                )
+                if not first_admin_message:
+                    first_admin_message = msg
+            except Exception as e:
+                logger.error(f"Failed to resend notification to admin {admin.user_id}: {e}")
+        
+        if first_admin_message:
+            db.set_experience_admin_message_id(exp.id, first_admin_message.message_id, first_admin_message.chat_id)
+
+        await query.edit_message_text("✅ تجربه شما با موفقیت برای بازبینی مجدد به ادمین‌ها ارسال شد.", reply_markup=kb.experience_detail_keyboard(exp_id))
+
+    elif exp.status == ExperienceStatus.PENDING:
+        await query.edit_message_text("برای ویرایش این تجربه، لطفاً یک تجربه جدید و اصلاح شده ثبت کنید. ادمین‌ها آخرین نسخه ارسالی شما را بررسی خواهند کرد.", reply_markup=kb.experience_detail_keyboard(exp_id))
 
 async def rules_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await check_channel_membership(update, context): return
@@ -227,8 +265,6 @@ async def submission_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     fields, _ = db.get_paginated_list(Field, per_page=100)
     await update.message.reply_text(db.get_text('submission_start'), reply_markup=kb.dynamic_list_keyboard(fields, 'field'))
     return States.SELECTING_FIELD
-
-# ... (rest of the functions remain the same) ...
 
 async def select_field(update: Update, context: ContextTypes.DEFAULT_TYPE) -> States:
     query = update.callback_query
@@ -275,8 +311,8 @@ async def add_new_professor_receive_name(update: Update, context: ContextTypes.D
     if not prof_name or len(prof_name) > 255:
         await update.message.reply_text("نام استاد نامعتبر است. لطفا دوباره تلاش کنید:")
         return States.ADDING_PROFESSOR
-    new_prof_id = db.add_item(Professor, name=prof_name)
-    context.user_data['experience']['professor_id'] = new_prof_id
+    new_prof_obj = db.add_item(Professor, name=prof_name)
+    context.user_data['experience']['professor_id'] = new_prof_obj.id
     await update.message.reply_text(db.get_text('ask_teaching_style'))
     return States.GETTING_TEACHING
 
@@ -323,24 +359,31 @@ async def get_conclusion_and_finish(update: Update, context: ContextTypes.DEFAUL
     exp_data['user_id'] = user.id
 
     with db.session_scope() as s:
-        new_exp = Experience(**exp_data)
-        s.add(new_exp)
+        new_exp_obj = Experience(**exp_data)
+        s.add(new_exp_obj)
         s.flush()  
-
-        s.refresh(new_exp, attribute_names=['field', 'major', 'professor', 'course'])
+        s.refresh(new_exp_obj, attribute_names=['field', 'major', 'professor', 'course'])
         
-        notification_text = escape_markdown(db.get_text('admin_new_experience_notification', exp_id=new_exp.id), version=2)
-        admin_message = notification_text + format_experience(new_exp)
+        notification_text = escape_markdown(db.get_text('admin_new_experience_notification', exp_id=new_exp_obj.id), version=2)
+        admin_message_text = notification_text + format_experience(new_exp_obj)
         
-        for admin in s.query(Admin).all(): 
+        first_admin_message = None
+        admins = s.query(Admin).all()
+        for admin in admins: 
             try:
-                await context.bot.send_message(
-                    chat_id=admin.user_id, text=admin_message,
-                    reply_markup=kb.admin_approval_keyboard(new_exp.id, user),
+                msg = await context.bot.send_message(
+                    chat_id=admin.user_id, text=admin_message_text,
+                    reply_markup=kb.admin_approval_keyboard(new_exp_obj.id, user),
                     parse_mode=constants.ParseMode.MARKDOWN_V2
                 )
+                if not first_admin_message:
+                    first_admin_message = msg
             except Exception as e:
                 logger.error(f"Failed to send notification to admin {admin.user_id}: {e}")
+
+        if first_admin_message:
+            new_exp_obj.admin_message_id = first_admin_message.message_id
+            new_exp_obj.admin_chat_id = first_admin_message.chat_id
 
     await update.message.reply_text(db.get_text('submission_success'), reply_markup=kb.main_menu())
     context.user_data.clear()
@@ -639,8 +682,6 @@ async def text_edit_receive_value(update: Update, context: ContextTypes.DEFAULT_
 
 ptb_app = Application.builder().token(config.BOT_TOKEN).build()
 
-# ... (Conversation Handlers remain the same) ...
-
 conv_defaults = {'per_message': False}
 submission_handler = ConversationHandler(
     entry_points=[MessageHandler(filters.Regex('^' + db.get_text(SUBMIT_EXP_BTN_KEY) + '$'), submission_start)],
@@ -727,12 +768,9 @@ ptb_app.add_handler(CallbackQueryHandler(admin_list_items_callback, pattern=ADMI
 ptb_app.add_handler(CallbackQueryHandler(admin_list_items_callback, pattern=ADMIN_LIST_TEXTS))
 ptb_app.add_handler(CallbackQueryHandler(item_delete_callback, pattern=ITEM_DELETE))
 ptb_app.add_handler(CallbackQueryHandler(item_confirm_delete_callback, pattern=ITEM_CONFIRM_DELETE))
-
-# ------------------- START: NEW HANDLERS -------------------
 ptb_app.add_handler(CallbackQueryHandler(my_experiences_page_callback, pattern=r"^my_exps_"))
 ptb_app.add_handler(CallbackQueryHandler(experience_detail_callback, pattern=r"^exp_detail_"))
-# -------------------- END: NEW HANDLERS --------------------
-
+ptb_app.add_handler(CallbackQueryHandler(edit_experience_callback, pattern=r"^edit_exp_"))
 
 async def on_startup(application: Application):
     application.job_queue.run_repeating(backup_database, interval=1800, first=15)
