@@ -37,12 +37,22 @@ def my_experiences_keyboard(experiences, current_page, total_pages):
 
     return InlineKeyboardMarkup(keyboard)
 
-# ------------------- START: NEW FUNCTION -------------------
-def experience_detail_keyboard(experience_id):
+def experience_detail_keyboard(experience_id, page=1):
     """Creates the keyboard for the experience detail view, including an edit button."""
     keyboard = [
-        [InlineKeyboardButton("✏️ ویرایش یا ارسال مجدد", callback_data=f"edit_exp_{experience_id}")],
-        [InlineKeyboardButton("🔙 بازگشت به لیست", callback_data="my_exps_1")]
+        [InlineKeyboardButton("✏️ ویرایش یا ارسال مجدد", callback_data=f"edit_exp_{experience_id}_{page}")],
+        [InlineKeyboardButton("🔙 بازگشت به لیست", callback_data=f"my_exps_{page}")]
+    ]
+    return InlineKeyboardMarkup(keyboard)
+
+# ------------------- START: NEW FUNCTION -------------------
+def confirm_edit_keyboard(experience_id, page=1):
+    """Asks the user to confirm the deletion and resubmission of an experience."""
+    keyboard = [
+        [
+            InlineKeyboardButton("✅ بله، ویرایش کن", callback_data=f"confirm_edit_{experience_id}_{page}"),
+            InlineKeyboardButton("❌ خیر", callback_data=f"exp_detail_{experience_id}")
+        ]
     ]
     return InlineKeyboardMarkup(keyboard)
 # -------------------- END: NEW FUNCTION --------------------
@@ -63,7 +73,6 @@ def admin_panel_main():
         [InlineKeyboardButton("👮‍♂️ مدیریت ادمین‌ها", callback_data="admin_list_admin_1")]
     ]
     return InlineKeyboardMarkup(keyboard)
-# ... (rest of the functions remain the same) ...
 
 def admin_manage_item_list(items, prefix, current_page, total_pages):
     keyboard = []

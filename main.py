@@ -194,13 +194,16 @@ async def my_experiences_page_callback(update: Update, context: ContextTypes.DEF
     keyboard = kb.my_experiences_keyboard(experiences, page, total_pages)
     await query.edit_message_text(db.get_text('my_experiences_header'), reply_markup=keyboard)
 
-# ------------------- START: CORRECTED FUNCTION -------------------
 async def experience_detail_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     
-    exp_id = int(query.data.split('_')[-1])
-    
+    parts = query.data.split('_')
+    exp_id = int(parts[-1])
+    page = 1
+    if len(parts) > 2 and parts[-2].isdigit():
+        page = int(parts[-2])
+
     with db.session_scope() as s:
         exp = db.get_experience_with_session(s, exp_id)
 
@@ -208,19 +211,20 @@ async def experience_detail_callback(update: Update, context: ContextTypes.DEFAU
             await query.edit_message_text("متاسفانه این تجربه پیدا نشد.")
             return
             
-        keyboard = kb.experience_detail_keyboard(exp_id)
+        keyboard = kb.experience_detail_keyboard(exp_id, page)
         await query.edit_message_text(
             format_experience(exp, md_version=2),
             parse_mode=constants.ParseMode.MARKDOWN_V2,
             reply_markup=keyboard
         )
-# -------------------- END: CORRECTED FUNCTION --------------------
 
-# ------------------- START: CORRECTED FUNCTION -------------------
 async def edit_experience_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    exp_id = int(query.data.split('_')[-1])
+    
+    parts = query.data.split('_')
+    exp_id = int(parts[-2])
+    page = int(parts[-1])
     
     with db.session_scope() as s:
         exp = db.get_experience_with_session(s, exp_id)
@@ -255,11 +259,27 @@ async def edit_experience_callback(update: Update, context: ContextTypes.DEFAULT
                 exp.admin_message_id = first_admin_message.message_id
                 exp.admin_chat_id = first_admin_message.chat_id
 
-            await query.edit_message_text("✅ تجربه شما با موفقیت برای بازبینی مجدد به ادمین‌ها ارسال شد.", reply_markup=kb.experience_detail_keyboard(exp_id))
+            await query.edit_message_text("✅ تجربه شما با موفقیت برای بازبینی مجدد به ادمین‌ها ارسال شد.", reply_markup=kb.experience_detail_keyboard(exp_id, page))
 
         elif exp.status == ExperienceStatus.PENDING:
-            await query.edit_message_text("برای ویرایش این تجربه، لطفاً یک تجربه جدید و اصلاح شده ثبت کنید. ادمین‌ها آخرین نسخه ارسالی شما را بررسی خواهند کرد.", reply_markup=kb.experience_detail_keyboard(exp_id))
-# -------------------- END: CORRECTED FUNCTION --------------------
+            await query.edit_message_text(
+                "⚠️ **آیا از ویرایش این تجربه مطمئن هستید؟**\n\nتجربه فعلی شما حذف و فرآیند ثبت مجدد از ابتدا آغاز خواهد شد.",
+                parse_mode=constants.ParseMode.MARKDOWN_V2,
+                reply_markup=kb.confirm_edit_keyboard(exp_id, page)
+            )
+
+async def edit_experience_confirm_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    query = update.callback_query
+    await query.answer()
+
+    parts = query.data.split('_')
+    exp_id = int(parts[-2])
+    
+    db.delete_item(Experience, exp_id)
+    
+    await query.edit_message_text("تجربه قبلی حذف شد. لطفاً اطلاعات جدید را وارد کنید.")
+    
+    return await submission_start(query, context)
 
 async def rules_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await check_channel_membership(update, context): return
@@ -269,7 +289,13 @@ async def submission_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     if not await check_channel_membership(update, context): return ConversationHandler.END
     context.user_data['experience'] = {}
     fields, _ = db.get_paginated_list(Field, per_page=100)
-    await update.message.reply_text(db.get_text('submission_start'), reply_markup=kb.dynamic_list_keyboard(fields, 'field'))
+    
+    target = update.message or update.callback_query.message
+    
+    await target.reply_text(
+        db.get_text('submission_start'),
+        reply_markup=kb.dynamic_list_keyboard(fields, 'field')
+    )
     return States.SELECTING_FIELD
 
 async def select_field(update: Update, context: ContextTypes.DEFAULT_TYPE) -> States:
@@ -690,7 +716,10 @@ ptb_app = Application.builder().token(config.BOT_TOKEN).build()
 
 conv_defaults = {'per_message': False}
 submission_handler = ConversationHandler(
-    entry_points=[MessageHandler(filters.Regex('^' + db.get_text(SUBMIT_EXP_BTN_KEY) + '$'), submission_start)],
+    entry_points=[
+        MessageHandler(filters.Regex('^' + db.get_text(SUBMIT_EXP_BTN_KEY) + '$'), submission_start),
+        CallbackQueryHandler(edit_experience_confirm_callback, pattern=r"^confirm_edit_")
+    ],
     states={
         States.SELECTING_FIELD: [CallbackQueryHandler(select_field, pattern=FIELD_SELECT)],
         States.SELECTING_MAJOR: [CallbackQueryHandler(select_major, pattern=MAJOR_SELECT)],
