@@ -1,4 +1,4 @@
-# database.py (Final Corrected Version)
+# database.py (Final and definitive corrected version)
 
 from sqlalchemy.orm import sessionmaker, joinedload
 from contextlib import contextmanager
@@ -203,13 +203,29 @@ def get_experience(exp_id):
 
 # ------------------- START: CORRECTED FUNCTION -------------------
 def get_user_experiences(user_id):
-    """Get all experiences for a user, eagerly loading necessary relationships."""
+    """
+    Get all experiences for a user, returning a list of dictionaries
+    to avoid DetachedInstanceError.
+    """
     with session_scope() as s:
-        return s.query(Experience).options(
+        exps = s.query(Experience).options(
             joinedload(Experience.course),
             joinedload(Experience.professor)
         ).filter_by(user_id=user_id).all()
+
+        results = []
+        for exp in exps:
+            # Safely access attributes within the session
+            course_name = exp.course.name if exp.course else "نامشخص"
+            professor_name = exp.professor.name if exp.professor else "نامشخص"
+            results.append({
+                'course_name': course_name,
+                'professor_name': professor_name,
+                'status': exp.status
+            })
+        return results
 # -------------------- END: CORRECTED FUNCTION --------------------
+
 
 def add_item(model, **kwargs):
     """Add a new item to the database."""

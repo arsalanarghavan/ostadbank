@@ -166,13 +166,13 @@ async def membership_check_callback(update: Update, context: ContextTypes.DEFAUL
 
 # ------------------- START: CORRECTED FUNCTION -------------------
 async def my_experiences_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not await check_channel_membership(update, context): 
+    if not await check_channel_membership(update, context):
         return
-        
+
     user_id = update.effective_user.id
-    exps = db.get_user_experiences(user_id)
-    
-    if not exps:
+    experiences_data = db.get_user_experiences(user_id)
+
+    if not experiences_data:
         await update.message.reply_text(db.get_text('my_experiences_empty'))
         return
 
@@ -183,20 +183,16 @@ async def my_experiences_command(update: Update, context: ContextTypes.DEFAULT_T
         ExperienceStatus.REJECTED: db.get_text('status_rejected')
     }
 
-    for exp in exps:
-        # Check for incomplete data to prevent errors
-        if not exp.course or not exp.professor:
-            logger.warning(f"Skipping incomplete experience record (ID: {exp.id}) for user {user_id}")
-            continue
-
-        course_name = escape_markdown(exp.course.name, version=2)
-        prof_name = escape_markdown(exp.professor.name, version=2)
-        status_text = status_map.get(exp.status, str(exp.status))
+    for exp_data in experiences_data:
+        course_name = escape_markdown(exp_data['course_name'], version=2)
+        prof_name = escape_markdown(exp_data['professor_name'], version=2)
+        status_text = status_map.get(exp_data['status'], str(exp_data['status']))
         response_lines.append(f"*{course_name}* \\- *{prof_name}* \\({status_text}\\)")
 
     response = "\n".join(response_lines)
     await update.message.reply_text(response, parse_mode=constants.ParseMode.MARKDOWN_V2)
 # -------------------- END: CORRECTED FUNCTION --------------------
+
 
 async def rules_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await check_channel_membership(update, context): return
