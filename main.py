@@ -329,7 +329,6 @@ async def admin_panel_callback(update: Update, context: ContextTypes.DEFAULT_TYP
     await query.answer()
     await query.edit_message_text(db.get_text('admin_panel_welcome'), reply_markup=kb.admin_panel_main())
 
-# ------------------- START: CORRECTED FUNCTION -------------------
 async def experience_approval_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await check_admin(update, context): return
     query = update.callback_query
@@ -374,8 +373,6 @@ async def experience_approval_handler(update: Update, context: ContextTypes.DEFA
                 )
             except Exception as e:
                 logger.warning(f"Could not notify user {exp.user_id} about rejection: {e}")
-# -------------------- END: CORRECTED FUNCTION --------------------
-
 
 async def show_stats_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await check_admin(update, context): return

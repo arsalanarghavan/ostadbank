@@ -81,8 +81,6 @@ def initialize_database():
             'exp_format_attendance_no': 'ندارد',
             'exp_format_exam': '⭕️ امتحان',
             'exp_format_conclusion': '⚠️ نتیجه گیری',
-
-            # ----------------- START: Final Corrected Text -----------------
             'exp_format_footer': """➖➖➖➖➖➖➖➖➖➖
 ❗️دوستانی که مایل به معرفی استاد هستن، می‌تونند با ما در ارتباط باشن تا استادشون رو معرفی کنیم و به بقیه کمک بشه برای انتخاب واحد بهتر.
 
@@ -93,8 +91,6 @@ def initialize_database():
 ثبت تجربه شما:
 🆔 @ShamsiOstadBankBot
 ➖➖➖➖➖➖➖➖➖➖""",
-            # ----------------- END: Final Corrected Text -----------------
-            
             'exp_format_tags': '♊️ تگ‌ها',
             'status_pending': '⏳ در انتظار تایید',
             'status_approved': '✅ تایید شده',
@@ -305,3 +301,12 @@ def get_all_required_channels():
     with session_scope() as s:
         channels = s.query(RequiredChannel).all()
         return [{'id': c.id, 'channel_id': c.channel_id, 'channel_link': c.channel_link} for c in channels]
+
+def get_experience_with_session(session, exp_id):
+    """Get a single experience using a provided session and eagerly load related objects."""
+    return session.query(Experience).options(
+        joinedload(Experience.field),
+        joinedload(Experience.major),
+        joinedload(Experience.professor),
+        joinedload(Experience.course)
+    ).get(exp_id)
