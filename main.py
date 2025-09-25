@@ -654,22 +654,22 @@ async def broadcast_receive_message(update: Update, context: ContextTypes.DEFAUL
     users = db.get_all_users()
     sent_count, failed_count = 0, 0
     await update.message.reply_text(f"در حال ارسال پیام به {len(users)} کاربر...")
-    
+
     for user in users:
         try:
             await context.bot.copy_message(
-                chat_id=user.user_id, 
-                from_chat_id=update.message.chat_id, 
+                chat_id=user['user_id'],
+                from_chat_id=update.message.chat_id,
                 message_id=update.message.message_id
             )
             sent_count += 1
         except Exception as e:
-            logger.error(f"Failed to send broadcast to {user.user_id}: {e}")
+            logger.error(f"Failed to send broadcast to {user['user_id']}: {e}")
             failed_count += 1
-        
+
         # Add a small delay to avoid hitting rate limits
-        await asyncio.sleep(0.5) 
-            
+        await asyncio.sleep(0.5)
+
     await update.message.reply_text(f"پیام به {sent_count} کاربر ارسال شد. {failed_count} ناموفق بود.")
     return ConversationHandler.END
 

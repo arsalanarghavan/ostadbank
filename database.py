@@ -435,7 +435,8 @@ def get_item_name(model, item_id):
 
 def get_all_users():
     with session_scope() as s:
-        return s.query(User).all()
+        users = s.query(User).all()
+        return [{'user_id': user.user_id} for user in users]
 
 def get_statistics():
     with session_scope() as s:
