@@ -2,7 +2,7 @@ import logging
 import asyncio
 import datetime
 import os
-import re # ماژول re برای حذف ایموجی اضافه شد
+import re 
 from telegram import Update, constants, ChatMember, InlineKeyboardMarkup
 from telegram.ext import (
     Application, CommandHandler, MessageHandler, ConversationHandler,
@@ -115,36 +115,31 @@ async def check_channel_membership(update: Update, context: ContextTypes.DEFAULT
         )
     return is_member_of_all
 
-# START OF CHANGE - تابع فرمت‌بندی به طور کامل اصلاح شد
 def format_experience(exp: Experience, md_version: int = 2) -> str:
     def def_md(text):
         return escape_markdown(str(text), version=md_version)
 
     def remove_emojis(text):
-        # این تابع ایموجی‌ها را از متن حذف می‌کند
         emoji_pattern = re.compile(
             "["
-            "\U0001F600-\U0001F64F"  # emoticons
-            "\U0001F300-\U0001F5FF"  # symbols & pictographs
-            "\U0001F680-\U0001F6FF"  # transport & map symbols
-            "\U0001F700-\U0001F77F"  # alchemical symbols
-            "\U0001F780-\U0001F7FF"  # Geometric Shapes Extended
-            "\U0001F800-\U0001F8FF"  # Supplemental Arrows-C
-            "\U0001F900-\U0001F9FF"  # Supplemental Symbols and Pictographs
-            "\U0001FA00-\U0001FA6F"  # Chess Symbols
-            "\U0001FA70-\U0001FAFF"  # Symbols and Pictographs Extended-A
-            "\U00002702-\U000027B0"  # Dingbats
+            "\U0001F600-\U0001F64F"
+            "\U0001F300-\U0001F5FF"
+            "\U0001F680-\U0001F6FF"
+            "\U0001F700-\U0001F77F"
+            "\U0001F780-\U0001F7FF"
+            "\U0001F800-\U0001F8FF"
+            "\U0001F900-\U0001F9FF"
+            "\U0001FA00-\U0001FA6F"
+            "\U0001FA70-\U0001FAFF"
+            "\U00002702-\U000027B0"
             "\U000024C2-\U0001F251" 
             "]+", flags=re.UNICODE)
         return emoji_pattern.sub(r'', text).strip()
 
     def make_safe_tag(name: str) -> str:
-        # ایموجی‌ها حذف شده و هر نوع فاصله یا خط تیره با یک آندرلاین جایگزین می‌شود
         text_no_emoji = remove_emojis(name)
-        # جایگزینی فاصله‌ها با آندرلاین
         return re.sub(r'[\s\-_]+', '_', text_no_emoji)
 
-    # دریافت مقادیر از دیتابیس
     field_name = def_md(exp.field.name)
     major_name = def_md(exp.major.name)
     professor_name = def_md(exp.professor.name)
@@ -156,14 +151,11 @@ def format_experience(exp: Experience, md_version: int = 2) -> str:
     exam = def_md(exp.exam)
     conclusion = def_md(exp.conclusion)
 
-    # ساخت تگ‌ها بدون ایموجی و با آندرلاین
     tags = (f"\\#{make_safe_tag(exp.field.name)} \\#{make_safe_tag(exp.major.name)} "
             f"\\#{make_safe_tag(exp.professor.name)} \\#{make_safe_tag(exp.course.name)}")
             
-    # متن حضور و غیاب
     attendance_status = db.get_text('exp_format_attendance_yes') if exp.attendance_required else db.get_text('exp_format_attendance_no')
     
-    # فرمت‌بندی نهایی مطابق با نمونه (حذف \n های اضافی)
     return (f"*{db.get_text('exp_format_field')}*: {field_name} \\({major_name}\\)\n\n"
             f"*{db.get_text('exp_format_professor')}*: {professor_name}\n\n"
             f"*{db.get_text('exp_format_course')}*: {course_name}\n\n"
@@ -175,12 +167,16 @@ def format_experience(exp: Experience, md_version: int = 2) -> str:
             f"*{db.get_text('exp_format_conclusion')}*: {conclusion}\n\n"
             f"{def_md(db.get_text('exp_format_footer'))}\n\n"
             f"*{db.get_text('exp_format_tags')}*: {tags}")
-# END OF CHANGE
 
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     db.add_user(update.effective_user.id, update.effective_user.first_name)
     if await check_channel_membership(update, context):
         await update.message.reply_text(db.get_text('welcome'), reply_markup=kb.main_menu())
+
+# START OF CHANGE - تابع جدید برای بازگشت به منوی اصلی
+async def back_to_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(db.get_text('welcome'), reply_markup=kb.main_menu())
+# END OF CHANGE
 
 async def membership_check_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -461,14 +457,48 @@ async def cancel_submission(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     context.user_data.clear()
     return ConversationHandler.END
 
+# START OF CHANGE - توابع مربوط به پنل ادمین اصلاح شدند
 async def admin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if await check_admin(update, context):
         await update.message.reply_text(db.get_text('admin_panel_welcome'), reply_markup=kb.admin_panel_main())
 
-async def admin_panel_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def admin_panel_callback_inline(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     await query.edit_message_text(db.get_text('admin_panel_welcome'), reply_markup=kb.admin_panel_main())
+
+async def show_stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not await check_admin(update, context): return
+    stats = db.get_statistics()
+    await update.message.reply_text(
+        db.get_text('stats_message', **stats),
+        parse_mode=constants.ParseMode.MARKDOWN_V2
+    )
+
+async def admin_list_items_command(update: Update, context: ContextTypes.DEFAULT_TYPE, prefix: str):
+    if not await check_admin(update, context): return
+    
+    page = 1 # Always start at page 1 for regular buttons
+    
+    if prefix == 'texts':
+        items, total_pages = db.get_paginated_list(BotText, page=page)
+        keyboard = kb.admin_manage_texts_list(items, page, total_pages)
+        header_key = 'admin_manage_texts_header'
+    else:
+        model = MODEL_MAP.get(prefix)
+        if not model: return
+        items, total_pages = db.get_paginated_list(model, page=page)
+        keyboard = kb.admin_manage_item_list(items, prefix, page, total_pages)
+        header_key = f'admin_manage_{prefix}_header'
+
+    await update.message.reply_text(db.get_text(header_key), reply_markup=keyboard)
+
+async def manage_experiences_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not await check_admin(update, context): return
+    # This is a placeholder for the next development step
+    await update.message.reply_text("این بخش در حال ساخت است. در مرحله بعد، امکانات مدیریت نظرات به اینجا اضافه خواهد شد.")
+
+# END OF CHANGE
 
 async def experience_approval_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await check_admin(update, context): return
@@ -515,22 +545,9 @@ async def experience_approval_handler(update: Update, context: ContextTypes.DEFA
             except Exception as e:
                 logger.warning(f"Could not notify user {exp.user_id} about rejection: {e}")
 
-async def show_stats_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not await check_admin(update, context): return
-    query = update.callback_query
-    await query.answer()
-    stats = db.get_statistics()
-    await query.edit_message_text(
-        db.get_text('stats_message', **stats),
-        parse_mode=constants.ParseMode.MARKDOWN_V2,
-        reply_markup=kb.back_to_list_keyboard("main_panel", is_main_panel=True)
-    )
-
 async def broadcast_start_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> States:
     if not await check_admin(update, context): return ConversationHandler.END
-    query = update.callback_query
-    await query.answer()
-    await query.edit_message_text(db.get_text('broadcast_prompt'))
+    await update.message.reply_text(db.get_text('broadcast_prompt'))
     return States.GETTING_BROADCAST_MESSAGE
 
 async def broadcast_receive_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -550,9 +567,7 @@ async def broadcast_receive_message(update: Update, context: ContextTypes.DEFAUL
 
 async def single_message_start_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> States:
     if not await check_admin(update, context): return ConversationHandler.END
-    query = update.callback_query
-    await query.answer()
-    await query.edit_message_text(db.get_text('single_message_user_prompt'))
+    await update.message.reply_text(db.get_text('single_message_user_prompt'))
     return States.GETTING_SINGLE_USER_ID
 
 async def single_message_get_user(update: Update, context: ContextTypes.DEFAULT_TYPE) -> States:
@@ -571,11 +586,9 @@ async def single_message_send(update: Update, context: ContextTypes.DEFAULT_TYPE
         await update.message.reply_text(db.get_text('single_message_fail', target_user=target_user, error=e))
     return ConversationHandler.END
 
-async def admin_manage_channels_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def admin_manage_channels_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await check_admin(update, context): return
-    query = update.callback_query
-    await query.answer()
-    await query.edit_message_text("مدیریت کانال‌ها:", reply_markup=kb.admin_manage_channels_keyboard())
+    await update.message.reply_text("مدیریت کانال‌ها:", reply_markup=kb.admin_manage_channels_keyboard())
 
 async def admin_toggle_force_sub_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await check_admin(update, context): return
@@ -771,17 +784,17 @@ submission_handler = ConversationHandler(
     **conv_defaults
 )
 broadcast_handler = ConversationHandler(
-    entry_points=[CallbackQueryHandler(broadcast_start_callback, pattern=r'^admin_broadcast$')],
+    entry_points=[MessageHandler(filters.Regex('^' + db.get_text('btn_admin_broadcast') + '$'), broadcast_start_callback)],
     states={States.GETTING_BROADCAST_MESSAGE: [MessageHandler(filters.ALL & ~filters.COMMAND, broadcast_receive_message)]},
-    fallbacks=[CallbackQueryHandler(admin_panel_callback, pattern=ADMIN_MAIN_PANEL)], **conv_defaults
+    fallbacks=[CommandHandler('admin', admin_command)], **conv_defaults
 )
 single_message_handler = ConversationHandler(
-    entry_points=[CallbackQueryHandler(single_message_start_callback, pattern=r'^admin_single_message$')],
+    entry_points=[MessageHandler(filters.Regex('^' + db.get_text('btn_admin_single_message') + '$'), single_message_start_callback)],
     states={
         States.GETTING_SINGLE_USER_ID: [MessageHandler(filters.TEXT & ~filters.COMMAND, single_message_get_user)],
         States.GETTING_SINGLE_MESSAGE: [MessageHandler(filters.ALL & ~filters.COMMAND, single_message_send)]
     },
-    fallbacks=[CallbackQueryHandler(admin_panel_callback, pattern=ADMIN_MAIN_PANEL)], **conv_defaults
+    fallbacks=[CommandHandler('admin', admin_command)], **conv_defaults
 )
 add_channel_handler = ConversationHandler(
     entry_points=[CallbackQueryHandler(admin_add_channel_start_callback, pattern=ADMIN_ADD_CHANNEL)],
@@ -789,7 +802,7 @@ add_channel_handler = ConversationHandler(
         States.GETTING_CHANNEL_ID_TO_ADD: [MessageHandler(filters.TEXT & ~filters.COMMAND, admin_add_channel_get_id)],
         States.GETTING_CHANNEL_LINK_TO_ADD: [MessageHandler(filters.TEXT & ~filters.COMMAND, admin_add_channel_get_link)]
     },
-    fallbacks=[CallbackQueryHandler(admin_manage_channels_callback, pattern=ADMIN_MANAGE_CHANNELS)], **conv_defaults
+    fallbacks=[CallbackQueryHandler(admin_manage_channels_command, pattern=ADMIN_MANAGE_CHANNELS)], **conv_defaults
 )
 item_add_handler = ConversationHandler(
     entry_points=[CallbackQueryHandler(item_add_start, pattern=ITEM_ADD), CallbackQueryHandler(item_add_start, pattern=ADMIN_ADD)],
@@ -811,10 +824,25 @@ text_edit_handler = ConversationHandler(
     fallbacks=[CallbackQueryHandler(cancel_submission, pattern=CANCEL_SUBMISSION)], **conv_defaults
 )
 
+# START OF CHANGE - هندلرهای پنل ادمین اصلاح شدند
 ptb_app.add_handler(CommandHandler("start", start_command))
 ptb_app.add_handler(CommandHandler("admin", admin_command))
 ptb_app.add_handler(MessageHandler(filters.Regex('^' + db.get_text(MY_EXPS_BTN_KEY) + '$'), my_experiences_command))
 ptb_app.add_handler(MessageHandler(filters.Regex('^' + db.get_text(RULES_BTN_KEY) + '$'), rules_command))
+ptb_app.add_handler(MessageHandler(filters.Regex('^' + db.get_text('btn_main_menu') + '$'), back_to_main_menu))
+
+# Admin panel command handlers (ReplyKeyboard)
+ptb_app.add_handler(MessageHandler(filters.Regex('^' + db.get_text('btn_admin_stats') + '$'), show_stats_command))
+ptb_app.add_handler(MessageHandler(filters.Regex('^' + db.get_text('btn_admin_manage_channels') + '$'), admin_manage_channels_command))
+ptb_app.add_handler(MessageHandler(filters.Regex('^' + db.get_text('btn_admin_manage_experiences') + '$'), manage_experiences_command))
+ptb_app.add_handler(MessageHandler(filters.Regex('^' + db.get_text('btn_admin_manage_fields') + '$'), lambda u, c: admin_list_items_command(u, c, 'field')))
+ptb_app.add_handler(MessageHandler(filters.Regex('^' + db.get_text('btn_admin_manage_majors') + '$'), lambda u, c: admin_list_items_command(u, c, 'major')))
+ptb_app.add_handler(MessageHandler(filters.Regex('^' + db.get_text('btn_admin_manage_professors') + '$'), lambda u, c: admin_list_items_command(u, c, 'professor')))
+ptb_app.add_handler(MessageHandler(filters.Regex('^' + db.get_text('btn_admin_manage_courses') + '$'), lambda u, c: admin_list_items_command(u, c, 'course')))
+ptb_app.add_handler(MessageHandler(filters.Regex('^' + db.get_text('btn_admin_manage_texts') + '$'), lambda u, c: admin_list_items_command(u, c, 'texts')))
+ptb_app.add_handler(MessageHandler(filters.Regex('^' + db.get_text('btn_admin_manage_admins') + '$'), lambda u, c: admin_list_items_command(u, c, 'admin')))
+# END OF CHANGE
+
 ptb_app.add_handler(CallbackQueryHandler(membership_check_callback, pattern=CHECK_MEMBERSHIP))
 ptb_app.add_handler(submission_handler)
 ptb_app.add_handler(broadcast_handler)
@@ -823,10 +851,10 @@ ptb_app.add_handler(add_channel_handler)
 ptb_app.add_handler(item_add_handler)
 ptb_app.add_handler(item_edit_handler)
 ptb_app.add_handler(text_edit_handler)
-ptb_app.add_handler(CallbackQueryHandler(admin_panel_callback, pattern=ADMIN_MAIN_PANEL))
-ptb_app.add_handler(CallbackQueryHandler(show_stats_callback, pattern=r'^admin_stats$'))
+
+# Callback handlers for inline buttons (still needed for lists, approvals etc.)
+ptb_app.add_handler(CallbackQueryHandler(admin_panel_callback_inline, pattern="^admin_main_panel_inline$"))
 ptb_app.add_handler(CallbackQueryHandler(experience_approval_handler, pattern=EXPERIENCE_APPROVAL))
-ptb_app.add_handler(CallbackQueryHandler(admin_manage_channels_callback, pattern=ADMIN_MANAGE_CHANNELS))
 ptb_app.add_handler(CallbackQueryHandler(admin_toggle_force_sub_callback, pattern=ADMIN_TOGGLE_FORCE_SUB))
 ptb_app.add_handler(CallbackQueryHandler(admin_delete_channel_callback, pattern=ADMIN_DELETE_CHANNEL))
 ptb_app.add_handler(CallbackQueryHandler(admin_list_items_callback, pattern=ADMIN_LIST_ITEMS))
@@ -836,6 +864,7 @@ ptb_app.add_handler(CallbackQueryHandler(item_confirm_delete_callback, pattern=I
 ptb_app.add_handler(CallbackQueryHandler(my_experiences_page_callback, pattern=r"^my_exps_"))
 ptb_app.add_handler(CallbackQueryHandler(experience_detail_callback, pattern=r"^exp_detail_"))
 ptb_app.add_handler(CallbackQueryHandler(edit_experience_callback, pattern=r"^edit_exp_"))
+
 
 async def on_startup(application: Application):
     application.job_queue.run_repeating(backup_database, interval=1800, first=15)

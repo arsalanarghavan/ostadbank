@@ -11,6 +11,21 @@ def main_menu():
         [db.get_text('btn_my_experiences'), db.get_text('btn_rules')]
     ], resize_keyboard=True)
 
+# START OF CHANGE - منوی ادمین به دکمه‌های عادی تغییر کرد
+def admin_panel_main():
+    """Returns the main keyboard for the admin panel as a ReplyKeyboard."""
+    keyboard = [
+        [db.get_text('btn_admin_stats'), db.get_text('btn_admin_broadcast')],
+        [db.get_text('btn_admin_single_message'), db.get_text('btn_admin_manage_channels')],
+        [db.get_text('btn_admin_manage_experiences')],
+        [db.get_text('btn_admin_manage_fields'), db.get_text('btn_admin_manage_majors')],
+        [db.get_text('btn_admin_manage_professors'), db.get_text('btn_admin_manage_courses')],
+        [db.get_text('btn_admin_manage_texts'), db.get_text('btn_admin_manage_admins')],
+        [db.get_text('btn_main_menu')]
+    ]
+    return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+# END OF CHANGE
+
 def my_experiences_keyboard(experiences, current_page, total_pages):
     """Creates an inline keyboard for the user's experiences with pagination."""
     keyboard = []
@@ -57,22 +72,6 @@ def confirm_edit_keyboard(experience_id, page=1):
     ]
     return InlineKeyboardMarkup(keyboard)
 
-def admin_panel_main():
-    """Returns the main keyboard for the admin panel."""
-    keyboard = [
-        [InlineKeyboardButton("📊 آمار ربات", callback_data="admin_stats")],
-        [InlineKeyboardButton("📢 ارسال پیام همگانی", callback_data="admin_broadcast")],
-        [InlineKeyboardButton("👤 ارسال پیام به کاربر", callback_data="admin_single_message")],
-        [InlineKeyboardButton("🔗 مدیریت کانال‌ها", callback_data="admin_manage_channels")],
-        [InlineKeyboardButton(db.get_text('btn_admin_manage_fields'), callback_data="admin_list_field_1")],
-        [InlineKeyboardButton(db.get_text('btn_admin_manage_majors'), callback_data="admin_list_major_1")],
-        [InlineKeyboardButton(db.get_text('btn_admin_manage_professors'), callback_data="admin_list_professor_1")],
-        [InlineKeyboardButton(db.get_text('btn_admin_manage_courses'), callback_data="admin_list_course_1")],
-        [InlineKeyboardButton(db.get_text('btn_admin_manage_texts'), callback_data="admin_list_texts_1")],
-        [InlineKeyboardButton("👮‍♂️ مدیریت ادمین‌ها", callback_data="admin_list_admin_1")]
-    ]
-    return InlineKeyboardMarkup(keyboard)
-
 def admin_manage_item_list(items, prefix, current_page, total_pages):
     keyboard = []
     for item in items:
@@ -100,7 +99,7 @@ def admin_manage_item_list(items, prefix, current_page, total_pages):
 
     add_button_text = db.get_text('btn_add_new') if prefix != 'admin' else '➕ افزودن ادمین جدید'
     keyboard.append([InlineKeyboardButton(add_button_text, callback_data=f"{prefix}_add_{current_page}")])
-    keyboard.append([InlineKeyboardButton(db.get_text('btn_back_to_panel'), callback_data="admin_main_panel")])
+    keyboard.append([InlineKeyboardButton(db.get_text('btn_back_to_panel'), callback_data="admin_main_panel_inline")])
 
     return InlineKeyboardMarkup(keyboard)
 
@@ -119,7 +118,7 @@ def admin_manage_texts_list(texts, current_page, total_pages):
     if pagination_row:
         keyboard.append(pagination_row)
 
-    keyboard.append([InlineKeyboardButton(db.get_text('btn_back_to_panel'), callback_data="admin_main_panel")])
+    keyboard.append([InlineKeyboardButton(db.get_text('btn_back_to_panel'), callback_data="admin_main_panel_inline")])
     return InlineKeyboardMarkup(keyboard)
 
 def confirm_delete_keyboard(prefix, item_id, page):
@@ -130,7 +129,7 @@ def confirm_delete_keyboard(prefix, item_id, page):
 
 def back_to_list_keyboard(prefix, page=1, is_main_panel=False):
     if is_main_panel:
-        return InlineKeyboardMarkup([[InlineKeyboardButton(db.get_text('btn_back_to_panel'), callback_data="admin_main_panel")]])
+        return InlineKeyboardMarkup([[InlineKeyboardButton(db.get_text('btn_back_to_panel'), callback_data="admin_main_panel_inline")]])
     
     list_prefix = 'texts' if prefix == 'texts' else prefix
     return InlineKeyboardMarkup([[InlineKeyboardButton(db.get_text('btn_back_to_list'), callback_data=f"admin_list_{list_prefix}_{page}")]])
@@ -204,5 +203,5 @@ def admin_manage_channels_keyboard():
     toggle_text = "✅ غیرفعال‌سازی عضویت اجباری" if is_forced else "☑️ فعال‌سازی عضویت اجباری"
     keyboard.append([InlineKeyboardButton(toggle_text, callback_data="admin_toggle_force_sub")])
     
-    keyboard.append([InlineKeyboardButton(db.get_text('btn_back_to_panel'), callback_data="admin_main_panel")])
+    keyboard.append([InlineKeyboardButton(db.get_text('btn_back_to_panel'), callback_data="admin_main_panel_inline")])
     return InlineKeyboardMarkup(keyboard)

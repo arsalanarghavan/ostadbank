@@ -109,6 +109,15 @@ def initialize_database():
             'btn_submit_experience': '✍️ ثبت تجربه',
             'btn_my_experiences': '📖 تجربه‌های من',
             'btn_rules': '📜 قوانین',
+            # START OF CHANGE - کلیدهای متنی دکمه‌های جدید ادمین
+            'btn_admin_stats': '📊 آمار ربات',
+            'btn_admin_broadcast': '📢 ارسال پیام همگانی',
+            'btn_admin_single_message': '👤 ارسال پیام به کاربر',
+            'btn_admin_manage_channels': '🔗 مدیریت کانال‌ها',
+            'btn_admin_manage_experiences': '📖 تاریخچه نظرات',
+            'btn_admin_manage_admins': '👮‍♂️ مدیریت ادمین‌ها',
+            'btn_main_menu': '⬅️ بازگشت به منوی اصلی',
+            # END OF CHANGE
             'btn_admin_manage_fields': '🎓 مدیریت رشته‌ها',
             'btn_admin_manage_majors': '📚 مدیریت گرایش‌ها',
             'btn_admin_manage_professors': '👨🏻‍🏫 مدیریت اساتید',
@@ -218,15 +227,13 @@ def get_user_experiences(user_id, page=1, per_page=10):
             })
         return results, total_pages
 
-# START OF CHANGE - تابع add_item به شکل نهایی اصلاح شد
 def add_item(model, **kwargs):
     with session_scope() as s:
         new_item = model(**kwargs)
         s.add(new_item)
-        s.flush() # ID را به شیء اختصاص می‌دهد
-        s.expunge(new_item) # شیء را از session جدا می‌کند
-    return new_item # شیء جدا شده را که ID آن مشخص است، بازمی‌گرداند
-# END OF CHANGE
+        s.flush()
+        s.expunge(new_item)
+    return new_item
 
 def update_item(model, item_id, **kwargs):
     with session_scope() as s:
