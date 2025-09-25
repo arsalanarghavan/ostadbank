@@ -3,7 +3,7 @@ import asyncio
 import datetime
 import os
 import re
-import unicodedata  # <--- کتابخانه جدید برای نرمال‌سازی
+import unicodedata
 from telegram import Update, constants, ChatMember, InlineKeyboardMarkup, ReplyKeyboardRemove
 from telegram.ext import (
     Application, CommandHandler, MessageHandler, ConversationHandler,
@@ -149,28 +149,25 @@ def format_experience(exp, md_version: int = 2, redacted=False) -> str:
 
     def make_safe_tag(name: str) -> str:
         """
-        The definitive, most robust function to create a safe hashtag.
-        It normalizes unicode, removes emojis, and replaces separators with underscores.
+        Final fix: This function now also escapes the underscore character for MarkdownV2.
         """
         try:
-            # Step 1: Normalize the string to NFC form to handle composite characters.
-            # This is the most critical step to solve the hidden issue.
             normalized_name = unicodedata.normalize('NFC', name)
-            
-            # Step 2: Remove emojis from the normalized string.
             text_no_emoji = remove_emojis(normalized_name)
             
-            # Step 3: Replace all whitespace, ZWNJ, and hyphens with a single underscore.
-            safe_name = re.sub(r'[\s\u200c-]+', '_', text_no_emoji)
+            # Replace separators with a single underscore
+            name_with_underscores = re.sub(r'[\s\u200c-]+', '_', text_no_emoji)
             
-            # Step 4: Final log to see the entire process.
-            logger.info(f"Tag Transformation: Original='{name}' -> Normalized='{normalized_name}' -> NoEmoji='{text_no_emoji}' -> Final='{safe_name}'")
+            # **THE CRITICAL FIX IS HERE:** Escape the underscores for MarkdownV2
+            escaped_name = name_with_underscores.replace('_', '\\_')
             
-            return safe_name
+            logger.info(f"Tag Final Transformation: Original='{name}' -> WithUnderscores='{name_with_underscores}' -> Escaped='{escaped_name}'")
+            
+            return escaped_name
         except Exception as e:
             logger.error(f"Error in make_safe_tag for input '{name}': {e}")
-            # Fallback to a simple replace just in case of an unexpected error
-            return name.replace(' ', '_').replace('\u200c', '_')
+            return name.replace(' ', '\\_').replace('\u200c', '\\_')
+
 
     is_dataclass = isinstance(exp, ExperienceData)
 
