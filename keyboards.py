@@ -53,6 +53,35 @@ def admin_pending_experiences_keyboard(experiences, current_page, total_pages):
     keyboard.append([InlineKeyboardButton(db.get_text('btn_back_to_panel'), callback_data="admin_manage_experiences")])
     return InlineKeyboardMarkup(keyboard)
 
+# START OF CHANGE - کیبورد جدید برای نتایج جستجو
+def admin_search_results_keyboard(experiences, query, current_page, total_pages):
+    keyboard = []
+    
+    status_map = {
+        ExperienceStatus.PENDING: '⏳',
+        ExperienceStatus.APPROVED: '✅',
+        ExperienceStatus.REJECTED: '❌'
+    }
+
+    for exp in experiences:
+        status_emoji = status_map.get(exp['status'], '❔')
+        button_text = f"{status_emoji} ID: {exp['id']} - {exp['course_name']}"
+        # Pass the current page and query to the detail callback
+        keyboard.append([InlineKeyboardButton(button_text, callback_data=f"admin_search_detail_{current_page}_{exp['id']}")])
+
+    pagination_row = []
+    if current_page > 1:
+        pagination_row.append(InlineKeyboardButton(db.get_text('btn_prev_page'), callback_data=f"admin_search_page_{current_page - 1}"))
+    if current_page < total_pages:
+        pagination_row.append(InlineKeyboardButton(db.get_text('btn_next_page'), callback_data=f"admin_search_page_{current_page + 1}"))
+    
+    if pagination_row:
+        keyboard.append(pagination_row)
+
+    keyboard.append([InlineKeyboardButton(db.get_text('btn_back_to_panel'), callback_data="admin_manage_experiences")])
+    return InlineKeyboardMarkup(keyboard)
+# END OF CHANGE
+
 def my_experiences_keyboard(experiences, current_page, total_pages):
     """Creates an inline keyboard for the user's experiences with pagination."""
     keyboard = []
@@ -179,16 +208,9 @@ def attendance_keyboard():
         InlineKeyboardButton(db.get_text('btn_attendance_no'), callback_data="attendance_no")
     ], [InlineKeyboardButton(db.get_text('btn_cancel'), callback_data="cancel_submission")]])
 
-# START OF CHANGE - تابع admin_approval_keyboard اصلاح شد
-def admin_approval_keyboard(experience_id, user, from_list_page=None):
-    """
-    Creates the admin approval keyboard. It can handle both `telegram.User`
-    and the local database `User` model.
-    """
-    # شیء user از دیتابیس خودمان، آی‌دی تلگرام را در user_id دارد
-    # شیء user از تلگرام، آی‌دی را در id دارد
-    telegram_user_id = user.user_id if hasattr(user, 'user_id') else user.id
-
+def admin_approval_keyboard(experience_id, user, from_list_page=None, from_search=False):
+    telegram_user_id = getattr(user, 'user_id', getattr(user, 'id', None))
+    
     keyboard = [
         [
             InlineKeyboardButton(db.get_text('btn_approve_exp'), callback_data=f"exp_approve_{experience_id}"),
@@ -200,15 +222,15 @@ def admin_approval_keyboard(experience_id, user, from_list_page=None):
         ]
     ]
     
-    # قبل از دسترسی به یوزرنیم، از وجود آن مطمئن می‌شویم
     if hasattr(user, 'username') and user.username:
         keyboard.append([InlineKeyboardButton(f"@{user.username}", url=f"https://t.me/{user.username}")])
     
     if from_list_page:
-        keyboard.append([InlineKeyboardButton(db.get_text('btn_back_to_list'), callback_data=f"admin_pending_exps_{from_list_page}")])
+        back_callback = f"admin_search_page_{from_list_page}" if from_search else f"admin_pending_exps_{from_list_page}"
+        keyboard.append([InlineKeyboardButton(db.get_text('btn_back_to_list'), callback_data=back_callback)])
 
     return InlineKeyboardMarkup(keyboard)
-# END OF CHANGE
+
 
 def rejection_reasons_keyboard(experience_id):
     keyboard = [

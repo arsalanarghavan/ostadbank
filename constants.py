@@ -37,6 +37,10 @@ class States(Enum):
     GETTING_CHANNEL_ID_TO_ADD = auto()
     GETTING_CHANNEL_LINK_TO_ADD = auto()
 
+    # START OF CHANGE - حالت جدید برای جستجو
+    GETTING_PROFESSOR_SEARCH_QUERY = auto()
+    # END OF CHANGE
+
 
 # --- Callback Data Patterns ---
 # User flow patterns
@@ -51,19 +55,23 @@ CHECK_MEMBERSHIP = r"^check_membership$"
 
 
 # Admin panel patterns
-ADMIN_MAIN_PANEL = r"^admin_main_panel_inline$" # Modified to be more specific
+ADMIN_MAIN_PANEL = r"^admin_main_panel_inline$"
 ADMIN_LIST_ITEMS = r"^admin_list_(field|major|course|professor|admin)_\d+$"
 ADMIN_LIST_TEXTS = r"^admin_list_texts_\d+$"
-ADMIN_MANAGE_CHANNELS = r"^admin_manage_channels_inline$" # Modified to be more specific
+ADMIN_MANAGE_CHANNELS = r"^admin_manage_channels_inline$"
 ADMIN_ADD_CHANNEL = r"^admin_add_channel$"
 ADMIN_DELETE_CHANNEL = r"^admin_delete_channel_"
 ADMIN_TOGGLE_FORCE_SUB = r"^admin_toggle_force_sub$"
 
-
-# START OF CHANGE - الگوهای جدید برای مدیریت نظرات
+# Experience Management Patterns
 ADMIN_MANAGE_EXPERIENCES = r"^admin_manage_experiences$"
 ADMIN_LIST_PENDING_EXPERIENCES = r"^admin_pending_exps_"
 ADMIN_PENDING_EXPERIENCE_DETAIL = r"^admin_pending_detail_"
+
+# START OF CHANGE - الگوهای جدید برای جستجو
+ADMIN_SEARCH_EXPERIENCES = r"^admin_search_exps$"
+ADMIN_SEARCH_RESULTS_PAGE = r"^admin_search_page_"
+ADMIN_SEARCH_DETAIL = r"^admin_search_detail_"
 # END OF CHANGE
 
 
@@ -79,7 +87,7 @@ ITEM_CONFIRM_DELETE = r"^(field|major|course|professor|admin)_confirmdelete_\d+_
 # Parent selection for complex items
 COMPLEX_ITEM_SELECT_PARENT = r"^(major|course)_selectfield_"
 
-# Experience approval patterns (made more specific to avoid conflicts)
+# Experience approval patterns
 EXPERIENCE_APPROVAL = r"^exp_(approve|reject|reason)_"
 
 

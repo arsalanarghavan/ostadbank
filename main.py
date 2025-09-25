@@ -26,7 +26,8 @@ from constants import (
     ITEM_CONFIRM_DELETE, COMPLEX_ITEM_SELECT_PARENT, EXPERIENCE_APPROVAL,
     SUBMIT_EXP_BTN_KEY, MY_EXPS_BTN_KEY, RULES_BTN_KEY, CHECK_MEMBERSHIP,
     ADMIN_MANAGE_CHANNELS, ADMIN_ADD_CHANNEL, ADMIN_DELETE_CHANNEL, ADMIN_TOGGLE_FORCE_SUB,
-    ADMIN_MANAGE_EXPERIENCES, ADMIN_LIST_PENDING_EXPERIENCES, ADMIN_PENDING_EXPERIENCE_DETAIL
+    ADMIN_MANAGE_EXPERIENCES, ADMIN_LIST_PENDING_EXPERIENCES, ADMIN_PENDING_EXPERIENCE_DETAIL,
+    ADMIN_SEARCH_EXPERIENCES, ADMIN_SEARCH_RESULTS_PAGE, ADMIN_SEARCH_DETAIL
 )
 
 logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO)
@@ -463,15 +464,11 @@ async def admin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def admin_panel_callback_inline(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    # Since the main panel is now a reply keyboard, this just sends a text confirmation
-    # and ensures the reply keyboard is visible.
     await query.message.reply_text(
         db.get_text('admin_panel_welcome'), 
         reply_markup=kb.admin_panel_main()
     )
-    # We can also delete the inline message if we want a cleaner interface
     await query.message.delete()
-
 
 async def show_stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await check_admin(update, context): return
@@ -500,8 +497,6 @@ async def admin_list_items_command(update: Update, context: ContextTypes.DEFAULT
 
     await update.message.reply_text(db.get_text(header_key), reply_markup=keyboard)
 
-
-# START OF CHANGE - توابع جدید برای مدیریت نظرات
 async def manage_experiences_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await check_admin(update, context): return
     await update.message.reply_text(
@@ -544,7 +539,7 @@ async def admin_pending_detail_callback(update: Update, context: ContextTypes.DE
             return
         
         user = s.query(User).filter_by(user_id=exp.user_id).first()
-        if not user: # Fallback if user is not in users table
+        if not user:
             user = update.effective_user 
 
         await query.edit_message_text(
@@ -552,8 +547,6 @@ async def admin_pending_detail_callback(update: Update, context: ContextTypes.DE
             parse_mode=constants.ParseMode.MARKDOWN_V2,
             reply_markup=kb.admin_approval_keyboard(exp.id, user, from_list_page=page)
         )
-# END OF CHANGE
-
 
 async def experience_approval_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await check_admin(update, context): return
@@ -810,6 +803,45 @@ async def text_edit_receive_value(update: Update, context: ContextTypes.DEFAULT_
     context.user_data.clear()
     return ConversationHandler.END
 
+# START OF CHANGE - هندلر جدید برای جستجو
+async def search_experiences_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> States:
+    if not await check_admin(update, context): return ConversationHandler.END
+    query = update.callback_query
+    await query.answer()
+    await query.edit_message_text(db.get_text('admin_search_prompt'))
+    return States.GETTING_PROFESSOR_SEARCH_QUERY
+
+async def search_experiences_receive_query(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    query_str = update.message.text
+    context.user_data['search_query'] = query_str
+    
+    experiences, total_pages = db.search_experiences_by_professor(query_str, page=1)
+    
+    if not experiences:
+        await update.message.reply_text(db.get_text('admin_search_no_results', query=query_str))
+        return ConversationHandler.END
+
+    keyboard = kb.admin_search_results_keyboard(experiences, query_str, 1, total_pages)
+    await update.message.reply_text(db.get_text('admin_search_results_header', query=query_str), reply_markup=keyboard)
+    return ConversationHandler.END
+
+async def search_results_page_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not await check_admin(update, context): return
+    query = update.callback_query
+    await query.answer()
+
+    page = int(query.data.split('_')[-1])
+    query_str = context.user_data.get('search_query')
+
+    if not query_str:
+        await query.edit_message_text("خطا: عبارت جستجو یافت نشد. لطفا دوباره جستجو کنید.")
+        return
+
+    experiences, total_pages = db.search_experiences_by_professor(query_str, page=page)
+    keyboard = kb.admin_search_results_keyboard(experiences, query_str, page, total_pages)
+    await query.edit_message_text(db.get_text('admin_search_results_header', query=query_str), reply_markup=keyboard)
+# END OF CHANGE
+
 ptb_app = Application.builder().token(config.BOT_TOKEN).build()
 
 conv_defaults = {'per_message': False}
@@ -838,11 +870,13 @@ submission_handler = ConversationHandler(
     fallbacks=[CallbackQueryHandler(cancel_submission, pattern=CANCEL_SUBMISSION)],
     **conv_defaults
 )
+
 broadcast_handler = ConversationHandler(
     entry_points=[MessageHandler(filters.Regex('^' + db.get_text('btn_admin_broadcast') + '$'), broadcast_start_callback)],
     states={States.GETTING_BROADCAST_MESSAGE: [MessageHandler(filters.ALL & ~filters.COMMAND, broadcast_receive_message)]},
     fallbacks=[CommandHandler('admin', admin_command)], **conv_defaults
 )
+
 single_message_handler = ConversationHandler(
     entry_points=[MessageHandler(filters.Regex('^' + db.get_text('btn_admin_single_message') + '$'), single_message_start_callback)],
     states={
@@ -851,6 +885,18 @@ single_message_handler = ConversationHandler(
     },
     fallbacks=[CommandHandler('admin', admin_command)], **conv_defaults
 )
+
+# START OF CHANGE - هندلر جدید برای جستجو
+search_handler = ConversationHandler(
+    entry_points=[CallbackQueryHandler(search_experiences_start, pattern=ADMIN_SEARCH_EXPERIENCES)],
+    states={
+        States.GETTING_PROFESSOR_SEARCH_QUERY: [MessageHandler(filters.TEXT & ~filters.COMMAND, search_experiences_receive_query)]
+    },
+    fallbacks=[CallbackQueryHandler(manage_experiences_command, pattern=ADMIN_MANAGE_EXPERIENCES)],
+    **conv_defaults
+)
+# END OF CHANGE
+
 add_channel_handler = ConversationHandler(
     entry_points=[CallbackQueryHandler(admin_add_channel_start_callback, pattern=ADMIN_ADD_CHANNEL)],
     states={
@@ -885,7 +931,7 @@ ptb_app.add_handler(MessageHandler(filters.Regex('^' + db.get_text(MY_EXPS_BTN_K
 ptb_app.add_handler(MessageHandler(filters.Regex('^' + db.get_text(RULES_BTN_KEY) + '$'), rules_command))
 ptb_app.add_handler(MessageHandler(filters.Regex('^' + db.get_text('btn_main_menu') + '$'), back_to_main_menu))
 
-# Admin panel command handlers (ReplyKeyboard)
+# Admin panel command handlers
 ptb_app.add_handler(MessageHandler(filters.Regex('^' + db.get_text('btn_admin_stats') + '$'), show_stats_command))
 ptb_app.add_handler(MessageHandler(filters.Regex('^' + db.get_text('btn_admin_manage_channels') + '$'), admin_manage_channels_command))
 ptb_app.add_handler(MessageHandler(filters.Regex('^' + db.get_text('btn_admin_manage_experiences') + '$'), manage_experiences_command))
@@ -904,7 +950,9 @@ ptb_app.add_handler(add_channel_handler)
 ptb_app.add_handler(item_add_handler)
 ptb_app.add_handler(item_edit_handler)
 ptb_app.add_handler(text_edit_handler)
+ptb_app.add_handler(search_handler) # Added search handler
 
+# Callback handlers for inline buttons
 ptb_app.add_handler(CallbackQueryHandler(admin_panel_callback_inline, pattern="^admin_main_panel_inline$"))
 ptb_app.add_handler(CallbackQueryHandler(experience_approval_handler, pattern=EXPERIENCE_APPROVAL))
 ptb_app.add_handler(CallbackQueryHandler(admin_toggle_force_sub_callback, pattern=ADMIN_TOGGLE_FORCE_SUB))
@@ -917,11 +965,13 @@ ptb_app.add_handler(CallbackQueryHandler(my_experiences_page_callback, pattern=r
 ptb_app.add_handler(CallbackQueryHandler(experience_detail_callback, pattern=r"^exp_detail_"))
 ptb_app.add_handler(CallbackQueryHandler(edit_experience_callback, pattern=r"^edit_exp_"))
 
-# START OF CHANGE - هندلرهای جدید برای مدیریت نظرات
+# New handlers for experience management
 ptb_app.add_handler(CallbackQueryHandler(manage_experiences_command, pattern=ADMIN_MANAGE_EXPERIENCES))
 ptb_app.add_handler(CallbackQueryHandler(admin_pending_reviews_callback, pattern=ADMIN_LIST_PENDING_EXPERIENCES))
 ptb_app.add_handler(CallbackQueryHandler(admin_pending_detail_callback, pattern=ADMIN_PENDING_EXPERIENCE_DETAIL))
-# END OF CHANGE
+ptb_app.add_handler(CallbackQueryHandler(search_results_page_callback, pattern=ADMIN_SEARCH_RESULTS_PAGE))
+# ptb_app.add_handler(CallbackQueryHandler(search_detail_callback, pattern=ADMIN_SEARCH_DETAIL)) # This will be added in the next step
+
 
 async def on_startup(application: Application):
     application.job_queue.run_repeating(backup_database, interval=1800, first=15)
