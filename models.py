@@ -6,6 +6,7 @@ from sqlalchemy import (create_engine, Column, Integer, String, Text,
 from sqlalchemy.orm import declarative_base, relationship
 from sqlalchemy.sql import func
 from dataclasses import dataclass
+from typing import Optional
 
 from config import DATABASE_URL
 
@@ -28,6 +29,7 @@ class ExperienceData:
     major_name: str
     professor_name: str
     course_name: str
+    channel_message_id: Optional[int]
 
 class ExperienceStatus(str, enum.Enum):
     PENDING = "pending"

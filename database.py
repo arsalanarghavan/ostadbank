@@ -338,7 +338,8 @@ def get_experience(exp_id) -> ExperienceData | None:
             field_name=exp.field.name if exp.field else "",
             major_name=exp.major.name if exp.major else "",
             professor_name=exp.professor.name if exp.professor else "",
-            course_name=exp.course.name if exp.course else ""
+            course_name=exp.course.name if exp.course else "",
+            channel_message_id=exp.channel_message_id
         )
 
 def get_user_experiences(user_id, page=1, per_page=10):
