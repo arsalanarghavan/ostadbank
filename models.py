@@ -29,7 +29,7 @@ class ExperienceData:
     major_name: str
     professor_name: str
     course_name: str
-    channel_message_id: Optional[int]
+    channel_message_id: Optional[int] = None
 
 class ExperienceStatus(str, enum.Enum):
     PENDING = "pending"

@@ -1,3 +1,5 @@
+# main.py
+
 import logging
 import asyncio
 import datetime
@@ -621,7 +623,6 @@ async def experience_approval_handler(update: Update, context: ContextTypes.DEFA
 async def delete_experience_content_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await check_admin(update, context): return
     query = update.callback_query
-    await query.answer()
     
     exp_id = int(query.data.split('_')[-1])
     
@@ -640,7 +641,11 @@ async def delete_experience_content_callback(update: Update, context: ContextTyp
         await query.answer(db.get_text('admin_content_deleted_success'), show_alert=True)
     except TelegramError as e:
         logger.error(f"Failed to edit message in channel: {e}")
-        await query.answer(f"خطا در ویرایش پیام: {e}", show_alert=True)
+        # Gracefully handle the "Message is not modified" error
+        if 'message is not modified' in str(e).lower():
+            await query.answer("محتوا قبلاً حذف شده است.", show_alert=True)
+        else:
+            await query.answer(f"خطا در ویرایش پیام: {e}", show_alert=True)
 
 async def broadcast_start_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> States:
     if not await check_admin(update, context): return ConversationHandler.END
