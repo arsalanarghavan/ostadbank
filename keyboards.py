@@ -7,7 +7,7 @@ from models import RequiredChannel, ExperienceStatus
 def main_menu():
     """Returns the main menu keyboard for regular users."""
     return ReplyKeyboardMarkup([
-        [db.get_text('btn_submit_experience')],
+        [db.get_text('btn_submit_experience'), db.get_text('btn_search')],
         [db.get_text('btn_my_experiences'), db.get_text('btn_rules')]
     ], resize_keyboard=True)
 
@@ -78,6 +78,14 @@ def admin_search_results_keyboard(experiences, query, current_page, total_pages)
 
     keyboard.append([InlineKeyboardButton(db.get_text('btn_back_to_panel'), callback_data="admin_manage_experiences")])
     return InlineKeyboardMarkup(keyboard)
+
+def user_search_results_keyboard(experiences):
+    """Creates a reply keyboard for user search results."""
+    keyboard = [[db.get_text('btn_main_menu')]] # Add back button first
+    for exp in experiences:
+        button_text = f"{exp['course_name']} - {exp['professor_name']}"
+        keyboard.append([button_text])
+    return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
 def my_experiences_keyboard(experiences, current_page, total_pages):
     """Creates an inline keyboard for the user's experiences with pagination."""
@@ -219,6 +227,11 @@ def admin_approval_keyboard(experience_id, user, from_list_page=None, from_searc
         ]
     ]
     
+    # Add the "Delete by Request" button only if the experience is already approved.
+    exp = db.get_experience(experience_id)
+    if exp and exp.status == ExperienceStatus.APPROVED:
+        keyboard.insert(1, [InlineKeyboardButton(db.get_text('btn_delete_content_by_request'), callback_data=f"exp_delete_content_{experience_id}")])
+
     if hasattr(user, 'username') and user.username:
         keyboard.append([InlineKeyboardButton(f"@{user.username}", url=f"https://t.me/{user.username}")])
     

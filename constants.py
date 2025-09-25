@@ -1,4 +1,4 @@
-# constants.py (Final Corrected Version)
+# constants.py
 
 from enum import Enum, auto
 
@@ -39,6 +39,7 @@ class States(Enum):
 
     # Experience Search Flow
     GETTING_PROFESSOR_SEARCH_QUERY = auto()
+    GETTING_USER_SEARCH_QUERY = auto() # New state for user search
 
 
 # --- Callback Data Patterns ---
@@ -51,6 +52,7 @@ PROFESSOR_ADD_NEW = r"^professor_add_new$"
 ATTENDANCE_CHOICE = r"^attendance_"
 CANCEL_SUBMISSION = r"^cancel_submission$"
 CHECK_MEMBERSHIP = r"^check_membership$"
+USER_SEARCH_RESULT = r"^user_search_result_" # New pattern for user search results
 
 
 # Admin panel patterns
@@ -85,6 +87,7 @@ COMPLEX_ITEM_SELECT_PARENT = r"^(major|course)_selectfield_"
 
 # Experience approval patterns
 EXPERIENCE_APPROVAL = r"^exp_(approve|reject|reason)_"
+EXPERIENCE_DELETE_CONTENT = r"^exp_delete_content_" # New pattern for content deletion
 
 
 # --- Bot Text Keys (for database) ---
@@ -93,3 +96,7 @@ RULES_TEXT_KEY = 'rules'
 SUBMIT_EXP_BTN_KEY = 'btn_submit_experience'
 MY_EXPS_BTN_KEY = 'btn_my_experiences'
 RULES_BTN_KEY = 'btn_rules'
+SEARCH_BTN_KEY = 'btn_search' # New key for search button
+USER_SEARCH_PROMPT_KEY = 'user_search_prompt' # New key for search prompt
+USER_SEARCH_NO_RESULTS_KEY = 'user_search_no_results' # New key for no results
+USER_SEARCH_HEADER_KEY = 'user_search_header' # New key for search header

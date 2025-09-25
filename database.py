@@ -110,6 +110,7 @@ def initialize_database():
             'btn_submit_experience': '✍️ ثبت تجربه',
             'btn_my_experiences': '📖 تجربه‌های من',
             'btn_rules': '📜 قوانین',
+            'btn_search': '🔎 جستجو',
             'btn_admin_stats': '📊 آمار ربات',
             'btn_admin_broadcast': '📢 ارسال پیام همگانی',
             'btn_admin_single_message': '👤 ارسال پیام به کاربر',
@@ -135,6 +136,7 @@ def initialize_database():
             'btn_attendance_no': '⛔️ ندارد',
             'btn_approve_exp': '✅ تایید تجربه',
             'btn_reject_exp': '❌ رد تجربه',
+            'btn_delete_content_by_request': '🗑 حذف به درخواست استاد',
             'btn_next_page': 'صفحه بعد ◀️',
             'btn_prev_page': '▶️ صفحه قبل',
             'btn_reject_reason_1': 'توهین‌آمیز',
@@ -148,7 +150,12 @@ def initialize_database():
             'admin_no_pending_experiences': 'هیچ نظر جدیدی برای بررسی وجود ندارد.',
             'admin_search_prompt': 'لطفا نام استاد مورد نظر را برای جستجو وارد کنید. می‌توانید بخشی از نام را نیز وارد کنید.',
             'admin_search_results_header': 'نتایج جستجو برای "{query}":',
-            'admin_search_no_results': 'هیچ نتیجه‌ای برای "{query}" یافت نشد.'
+            'admin_search_no_results': 'هیچ نتیجه‌ای برای "{query}" یافت نشد.',
+            'user_search_prompt': '🔎 لطفا نام استاد یا درس مورد نظر خود را برای جستجو وارد کنید:',
+            'user_search_no_results': '🤷‍♂️ متاسفانه هیچ نتیجه‌ای برای جستجوی شما یافت نشد.',
+            'user_search_header': 'نتایج جستجو برای "{query}":',
+            'content_deleted_by_request': 'به درخواست استاد این محتوا حذف شد',
+            'admin_content_deleted_success': '✅ محتوای نظر با موفقیت در کانال ویرایش شد.'
         }
 
         for key, value in default_texts.items():
@@ -211,6 +218,59 @@ def search_experiences_by_professor(query_str: str, page=1, per_page=10):
                 'status': exp.status
             })
         return results, total_pages
+
+def search_experiences_for_user(query_str: str, page=1, per_page=10):
+    with session_scope() as s:
+        search_filter = or_(
+            Professor.name.like(f"%{query_str}%"),
+            Course.name.like(f"%{query_str}%")
+        )
+        query = s.query(Experience)\
+                 .join(Professor)\
+                 .join(Course)\
+                 .filter(Experience.status == ExperienceStatus.APPROVED)\
+                 .filter(search_filter)
+        
+        total_items = query.count()
+        total_pages = math.ceil(total_items / per_page)
+        
+        offset = (page - 1) * per_page
+        exps = query.options(
+            joinedload(Experience.course),
+            joinedload(Experience.professor)
+        ).order_by(Experience.created_at.desc()).limit(per_page).offset(offset).all()
+
+        results = []
+        for exp in exps:
+            course_name = exp.course.name if exp.course else "نامشخص"
+            professor_name = exp.professor.name if exp.professor else "نامشخص"
+            results.append({
+                'id': exp.id,
+                'course_name': course_name,
+                'professor_name': professor_name
+            })
+        return results, total_pages
+
+def search_experiences_for_inline(query_str: str, limit=10):
+    with session_scope() as s:
+        search_filter = or_(
+            Professor.name.like(f"%{query_str}%"),
+            Course.name.like(f"%{query_str}%")
+        )
+        exps = s.query(Experience)\
+                .join(Professor)\
+                .join(Course)\
+                .filter(Experience.status == ExperienceStatus.APPROVED)\
+                .filter(search_filter)\
+                .options(
+                    joinedload(Experience.course),
+                    joinedload(Experience.professor),
+                    joinedload(Experience.field),
+                    joinedload(Experience.major)
+                )\
+                .order_by(Experience.created_at.desc())\
+                .limit(limit).all()
+        return exps
 
 def get_paginated_list(model, page=1, per_page=8):
     with session_scope() as s:

@@ -1,8 +1,8 @@
-# models.py (Final Corrected Version)
+# models.py
 
 import enum
 from sqlalchemy import (create_engine, Column, Integer, String, Text,
-                        ForeignKey, Boolean, DateTime, Enum as EnumType, BigInteger) # Added BigInteger
+                        ForeignKey, Boolean, DateTime, Enum as EnumType, BigInteger)
 from sqlalchemy.orm import declarative_base, relationship
 from sqlalchemy.sql import func
 
@@ -88,8 +88,9 @@ class Experience(Base):
     exam = Column(Text)
     conclusion = Column(Text)
     status = Column(EnumType(ExperienceStatus), default=ExperienceStatus.PENDING, nullable=False)
-    admin_message_id = Column(BigInteger, nullable=True) # To store the message ID for editing
-    admin_chat_id = Column(BigInteger, nullable=True) # To store the admin chat ID
+    admin_message_id = Column(BigInteger, nullable=True)
+    admin_chat_id = Column(BigInteger, nullable=True)
+    channel_message_id = Column(BigInteger, nullable=True) # New field
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 

@@ -27,10 +27,12 @@ from constants import (
     ATTENDANCE_CHOICE, CANCEL_SUBMISSION, ADMIN_MAIN_PANEL, ADMIN_LIST_ITEMS,
     ADMIN_LIST_TEXTS, ITEM_ADD, ADMIN_ADD, ITEM_EDIT, TEXT_EDIT, ITEM_DELETE,
     ITEM_CONFIRM_DELETE, COMPLEX_ITEM_SELECT_PARENT, EXPERIENCE_APPROVAL,
-    SUBMIT_EXP_BTN_KEY, MY_EXPS_BTN_KEY, RULES_BTN_KEY, CHECK_MEMBERSHIP,
+    SUBMIT_EXP_BTN_KEY, MY_EXPS_BTN_KEY, RULES_BTN_KEY, SEARCH_BTN_KEY, CHECK_MEMBERSHIP,
     ADMIN_MANAGE_CHANNELS, ADMIN_ADD_CHANNEL, ADMIN_DELETE_CHANNEL, ADMIN_TOGGLE_FORCE_SUB,
     ADMIN_MANAGE_EXPERIENCES, ADMIN_LIST_PENDING_EXPERIENCES, ADMIN_PENDING_EXPERIENCE_DETAIL,
-    ADMIN_SEARCH_EXPERIENCES, ADMIN_SEARCH_RESULTS_PAGE, ADMIN_SEARCH_DETAIL
+    ADMIN_SEARCH_EXPERIENCES, ADMIN_SEARCH_RESULTS_PAGE, ADMIN_SEARCH_DETAIL,
+    EXPERIENCE_DELETE_CONTENT, USER_SEARCH_PROMPT_KEY, USER_SEARCH_NO_RESULTS_KEY,
+    USER_SEARCH_HEADER_KEY
 )
 
 logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO)
@@ -120,7 +122,7 @@ async def check_channel_membership(update: Update, context: ContextTypes.DEFAULT
         )
     return is_member_of_all
 
-def format_experience(exp: Experience, md_version: int = 2) -> str:
+def format_experience(exp: Experience, md_version: int = 2, redacted=False) -> str:
     def def_md(text):
         return escape_markdown(str(text), version=md_version)
 
@@ -149,12 +151,17 @@ def format_experience(exp: Experience, md_version: int = 2) -> str:
     major_name = def_md(exp.major.name)
     professor_name = def_md(exp.professor.name)
     course_name = def_md(exp.course.name)
-    teaching_style = def_md(exp.teaching_style)
-    notes = def_md(exp.notes)
-    project = def_md(exp.project)
-    attendance_details = def_md(exp.attendance_details)
-    exam = def_md(exp.exam)
-    conclusion = def_md(exp.conclusion)
+
+    if redacted:
+        redacted_text = def_md(db.get_text('content_deleted_by_request'))
+        teaching_style = notes = project = attendance_details = exam = conclusion = redacted_text
+    else:
+        teaching_style = def_md(exp.teaching_style)
+        notes = def_md(exp.notes)
+        project = def_md(exp.project)
+        attendance_details = def_md(exp.attendance_details)
+        exam = def_md(exp.exam)
+        conclusion = def_md(exp.conclusion)
 
     tags = (f"\\#{make_safe_tag(exp.field.name)} \\#{make_safe_tag(exp.major.name)} "
             f"\\#{make_safe_tag(exp.professor.name)} \\#{make_safe_tag(exp.course.name)}")
@@ -180,6 +187,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def back_to_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(db.get_text('welcome'), reply_markup=kb.main_menu())
+    return ConversationHandler.END
 
 async def membership_check_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -503,9 +511,10 @@ async def admin_list_items_command(update: Update, context: ContextTypes.DEFAULT
 async def manage_experiences_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await check_admin(update, context): return
     
+    query = update.callback_query
     target = update.message
-    if not target and update.callback_query:
-        target = update.callback_query.message
+    if query:
+        target = query.message
         await query.answer()
     
     await target.reply_text(
@@ -573,9 +582,10 @@ async def experience_approval_handler(update: Update, context: ContextTypes.DEFA
 
         if action == "approve":
             exp.status = ExperienceStatus.APPROVED
-            await context.bot.send_message(
+            sent_message = await context.bot.send_message(
                 chat_id=config.CHANNEL_ID, text=format_experience(exp), parse_mode=constants.ParseMode.MARKDOWN_V2
             )
+            exp.channel_message_id = sent_message.message_id
             await query.edit_message_text(db.get_text('admin_approval_success', exp_id=exp_id))
             try:
                 await context.bot.send_message(
@@ -601,6 +611,32 @@ async def experience_approval_handler(update: Update, context: ContextTypes.DEFA
                 )
             except Exception as e:
                 logger.warning(f"Could not notify user {exp.user_id} about rejection: {e}")
+
+async def delete_experience_content_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not await check_admin(update, context): return
+    query = update.callback_query
+    await query.answer()
+    
+    exp_id = int(query.data.split('_')[-1])
+    
+    with db.session_scope() as s:
+        exp = db.get_experience_with_session(s, exp_id)
+        if not exp or not exp.channel_message_id:
+            await query.answer("خطا: این نظر در کانال یافت نشد یا شناسه آن ثبت نشده است.", show_alert=True)
+            return
+            
+        try:
+            await context.bot.edit_message_text(
+                chat_id=config.CHANNEL_ID,
+                message_id=exp.channel_message_id,
+                text=format_experience(exp, redacted=True),
+                parse_mode=constants.ParseMode.MARKDOWN_V2
+            )
+            await query.answer(db.get_text('admin_content_deleted_success'), show_alert=True)
+        except TelegramError as e:
+            logger.error(f"Failed to edit message in channel: {e}")
+            await query.answer(f"خطا در ویرایش پیام: {e}", show_alert=True)
+
 
 async def broadcast_start_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> States:
     if not await check_admin(update, context): return ConversationHandler.END
@@ -873,6 +909,81 @@ async def admin_search_detail_callback(update: Update, context: ContextTypes.DEF
             parse_mode=constants.ParseMode.MARKDOWN_V2,
             reply_markup=kb.admin_approval_keyboard(exp.id, user, from_list_page=page, from_search=True)
         )
+
+async def user_search_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> States:
+    """Starts the user search conversation."""
+    await update.message.reply_text(db.get_text(USER_SEARCH_PROMPT_KEY))
+    return States.GETTING_USER_SEARCH_QUERY
+
+async def user_search_receive_query(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Receives user's search query and displays results."""
+    query_str = update.message.text
+    experiences, _ = db.search_experiences_for_user(query_str, page=1, per_page=50) # Show more results for direct search
+
+    if not experiences:
+        await update.message.reply_text(db.get_text(USER_SEARCH_NO_RESULTS_KEY))
+        return States.GETTING_USER_SEARCH_QUERY
+
+    # Store results in user_data to avoid re-querying
+    context.user_data['search_results'] = {f"{exp['course_name']} - {exp['professor_name']}": exp['id'] for exp in experiences}
+
+    keyboard = kb.user_search_results_keyboard(experiences)
+    await update.message.reply_text(db.get_text(USER_SEARCH_HEADER_KEY, query=query_str), reply_markup=keyboard)
+    return States.GETTING_USER_SEARCH_QUERY
+
+async def user_search_show_detail(update: Update, context: ContextTypes.DEFAULT_TYPE) -> States:
+    """Shows the detail of a selected experience from search results."""
+    
+    selection = update.message.text
+    search_results = context.user_data.get('search_results', {})
+    exp_id = search_results.get(selection)
+    
+    if not exp_id:
+        # If the text doesn't match a button, treat it as a new search
+        return await user_search_receive_query(update, context)
+
+    exp = db.get_experience(exp_id)
+    if exp:
+        await update.message.reply_text(
+            format_experience(exp, md_version=2),
+            parse_mode=constants.ParseMode.MARKDOWN_V2,
+            reply_markup=kb.main_menu() # Go back to main menu after showing result
+        )
+        context.user_data.pop('search_results', None) # Clear search results
+        return ConversationHandler.END
+    else:
+        await update.message.reply_text("متاسفانه این تجربه پیدا نشد.")
+        return States.GETTING_USER_SEARCH_QUERY
+        
+async def inline_search_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handles inline search queries."""
+    query = update.inline_query.query
+    if not query or len(query) < 3:
+        return
+
+    results = []
+    experiences = db.search_experiences_for_inline(query)
+
+    for exp in experiences:
+        exp_text = format_experience(exp, md_version=2)
+        # Ensure the message text does not exceed the maximum length
+        if len(exp_text) > MAX_MESSAGE_LENGTH:
+            exp_text = exp_text[:MAX_MESSAGE_LENGTH - 10] + "\n\n\\.\\.\\."
+            
+        results.append(
+            InlineQueryResultArticle(
+                id=str(uuid4()),
+                title=f"{exp.professor.name} - {exp.course.name}",
+                description=exp.conclusion[:100],
+                input_message_content=InputTextMessageContent(
+                    exp_text,
+                    parse_mode=constants.ParseMode.MARKDOWN_V2
+                )
+            )
+        )
+    await update.inline_query.answer(results, cache_time=5)
+
+
 ptb_app = Application.builder().token(config.BOT_TOKEN).build()
 
 conv_defaults = {'per_message': False}
@@ -898,7 +1009,19 @@ submission_handler = ConversationHandler(
         States.GETTING_EXAM: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_exam)],
         States.GETTING_CONCLUSION: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_conclusion_and_finish)],
     },
-    fallbacks=[CallbackQueryHandler(cancel_submission, pattern=CANCEL_SUBMISSION)],
+    fallbacks=[
+        CallbackQueryHandler(cancel_submission, pattern=CANCEL_SUBMISSION),
+        MessageHandler(filters.Regex('^' + db.get_text('btn_main_menu') + '$'), back_to_main_menu),
+    ],
+    **conv_defaults
+)
+
+user_search_handler = ConversationHandler(
+    entry_points=[MessageHandler(filters.Regex('^' + db.get_text(SEARCH_BTN_KEY) + '$'), user_search_start)],
+    states={
+        States.GETTING_USER_SEARCH_QUERY: [MessageHandler(filters.TEXT & ~filters.COMMAND, user_search_show_detail)],
+    },
+    fallbacks=[MessageHandler(filters.Regex('^' + db.get_text('btn_main_menu') + '$'), back_to_main_menu)],
     **conv_defaults
 )
 
@@ -971,7 +1094,7 @@ ptb_app.add_handler(MessageHandler(filters.Regex('^' + db.get_text('btn_admin_ma
 ptb_app.add_handler(MessageHandler(filters.Regex('^' + db.get_text('btn_admin_manage_texts') + '$'), lambda u, c: admin_list_items_command(u, c, 'texts')))
 ptb_app.add_handler(MessageHandler(filters.Regex('^' + db.get_text('btn_admin_manage_admins') + '$'), lambda u, c: admin_list_items_command(u, c, 'admin')))
 
-ptb_app.add_handler(CallbackQueryHandler(membership_check_callback, pattern=CHECK_MEMBERSHIP))
+# Conversation Handlers
 ptb_app.add_handler(submission_handler)
 ptb_app.add_handler(broadcast_handler)
 ptb_app.add_handler(single_message_handler)
@@ -980,10 +1103,16 @@ ptb_app.add_handler(item_add_handler)
 ptb_app.add_handler(item_edit_handler)
 ptb_app.add_handler(text_edit_handler)
 ptb_app.add_handler(search_handler) 
+ptb_app.add_handler(user_search_handler) # Add user search handler
+
+# Inline Query Handler
+ptb_app.add_handler(InlineQueryHandler(inline_search_handler))
 
 # Callback handlers for inline buttons
+ptb_app.add_handler(CallbackQueryHandler(membership_check_callback, pattern=CHECK_MEMBERSHIP))
 ptb_app.add_handler(CallbackQueryHandler(admin_panel_callback_inline, pattern="^admin_main_panel_inline$"))
 ptb_app.add_handler(CallbackQueryHandler(experience_approval_handler, pattern=EXPERIENCE_APPROVAL))
+ptb_app.add_handler(CallbackQueryHandler(delete_experience_content_callback, pattern=EXPERIENCE_DELETE_CONTENT))
 ptb_app.add_handler(CallbackQueryHandler(admin_toggle_force_sub_callback, pattern=ADMIN_TOGGLE_FORCE_SUB))
 ptb_app.add_handler(CallbackQueryHandler(admin_delete_channel_callback, pattern=ADMIN_DELETE_CHANNEL))
 ptb_app.add_handler(CallbackQueryHandler(admin_list_items_callback, pattern=ADMIN_LIST_ITEMS))
