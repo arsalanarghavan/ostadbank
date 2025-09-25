@@ -1,9 +1,9 @@
-# database.py (Final Corrected Version for Alembic)
+# database.py (Final Corrected Version)
 
 from sqlalchemy.orm import sessionmaker, joinedload
 from contextlib import contextmanager
 import math
-from models import (engine, create_tables, User, Admin, BotText, Field,
+from models import (engine, User, Admin, BotText, Field,
                     Major, Professor, Course, Experience, ExperienceStatus,
                     RequiredChannel, Setting)
 import config
@@ -12,7 +12,6 @@ Session = sessionmaker(bind=engine)
 
 @contextmanager
 def session_scope():
-    """Provide a transactional scope around a series of operations."""
     session = Session()
     try:
         yield session
@@ -25,8 +24,6 @@ def session_scope():
         session.close()
 
 def initialize_database():
-    """Populate default texts if they don't exist."""
-    # create_tables()  <-- This line is now handled by Alembic
     with session_scope() as session:
         if not session.query(Admin).filter_by(user_id=config.OWNER_ID).first():
             session.add(Admin(user_id=config.OWNER_ID))
@@ -36,7 +33,9 @@ def initialize_database():
         
         default_texts = {
             'welcome': '🤖 سلام! به ربات بانک اساتید خوش آمدید. با این ربات می‌توانید تجربه خود را از اساتید مختلف ثبت کنید و به دیگران در انتخاب واحد کمک کنید. برای شروع، یکی از گزینه‌های زیر را انتخاب کنید.',
-            'rules': '📜 **قوانین و سوالات متداول:**\n\n۱. لطفا در بیان تجربیات خود صادق باشید.\n۲. از به کار بردن الفاظ توهین‌آمیز خودداری کنید.',
+            # --- START: CORRECTED TEXT ---
+            'rules': '📜 **قوانین و سوالات متداول:**\n\n۱\\. لطفا در بیان تجربیات خود صادق باشید\\.\n۲\\. از به کار بردن الفاظ توهین‌آمیز خودداری کنید\\.',
+            # --- END: CORRECTED TEXT ---
             'my_experiences_empty': 'شما هنوز تجربه‌ای ثبت نکرده‌اید.',
             'my_experiences_header': '📜 **تجربه‌های ثبت شده شما:**',
             'not_an_admin': '🚫 شما دسترسی لازم برای این کار را ندارید.',

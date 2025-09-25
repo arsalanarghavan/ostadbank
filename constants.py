@@ -1,4 +1,4 @@
-# constants.py
+# constants.py (Final Corrected Version)
 
 from enum import Enum, auto
 
@@ -60,7 +60,6 @@ ADMIN_DELETE_CHANNEL = r"^admin_delete_channel_"
 ADMIN_TOGGLE_FORCE_SUB = r"^admin_toggle_force_sub$"
 
 
-# --- START: بخش اصلاح شده ---
 # CRUD patterns (Create, Read, Update, Delete)
 ITEM_ADD = r"^(field|major|course|professor)_add_\d+$"
 ADMIN_ADD = r"^(admin)_add_\d+$"
@@ -68,17 +67,18 @@ ITEM_EDIT = r"^(field|major|course|professor)_edit_\d+_\d+$"
 TEXT_EDIT = r"^text_edit_.+_\d+$"
 ITEM_DELETE = r"^(field|major|course|professor|admin)_delete_\d+_\d+$"
 ITEM_CONFIRM_DELETE = r"^(field|major|course|professor|admin)_confirmdelete_\d+_\d+$"
-# --- END: بخش اصلاح شده ---
 
 
 # Parent selection for complex items
 COMPLEX_ITEM_SELECT_PARENT = r"^(major|course)_selectfield_"
 
-# Experience approval patterns
-EXPERIENCE_APPROVAL = r"^exp_"
+# ------------------- START: CORRECTED PATTERN -------------------
+# Experience approval patterns (made more specific to avoid conflicts)
+EXPERIENCE_APPROVAL = r"^exp_(approve|reject|reason)_"
+# -------------------- END: CORRECTED PATTERN --------------------
+
 
 # --- Bot Text Keys (for database) ---
-# A few examples to show how you can use them
 WELCOME_TEXT_KEY = 'welcome'
 RULES_TEXT_KEY = 'rules'
 SUBMIT_EXP_BTN_KEY = 'btn_submit_experience'
