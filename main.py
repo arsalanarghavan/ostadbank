@@ -139,8 +139,10 @@ def format_experience(exp: Experience, md_version: int = 2) -> str:
         return emoji_pattern.sub(r'', text).strip()
 
     def make_safe_tag(name: str) -> str:
-        # ایموجی‌ها حذف شده و فاصله با آندرلاین جایگزین می‌شود
-        return remove_emojis(name).replace(' ', '_').replace('-', '_')
+        # ایموجی‌ها حذف شده و هر نوع فاصله یا خط تیره با یک آندرلاین جایگزین می‌شود
+        text_no_emoji = remove_emojis(name)
+        # جایگزینی فاصله‌ها با آندرلاین
+        return re.sub(r'[\s\-_]+', '_', text_no_emoji)
 
     # دریافت مقادیر از دیتابیس
     field_name = def_md(exp.field.name)
@@ -154,23 +156,23 @@ def format_experience(exp: Experience, md_version: int = 2) -> str:
     exam = def_md(exp.exam)
     conclusion = def_md(exp.conclusion)
 
-    # ساخت تگ‌ها بدون ایموجی
+    # ساخت تگ‌ها بدون ایموجی و با آندرلاین
     tags = (f"\\#{make_safe_tag(exp.field.name)} \\#{make_safe_tag(exp.major.name)} "
             f"\\#{make_safe_tag(exp.professor.name)} \\#{make_safe_tag(exp.course.name)}")
             
     # متن حضور و غیاب
     attendance_status = db.get_text('exp_format_attendance_yes') if exp.attendance_required else db.get_text('exp_format_attendance_no')
     
-    # فرمت‌بندی نهایی مطابق با نمونه
+    # فرمت‌بندی نهایی مطابق با نمونه (حذف \n های اضافی)
     return (f"*{db.get_text('exp_format_field')}*: {field_name} \\({major_name}\\)\n\n"
             f"*{db.get_text('exp_format_professor')}*: {professor_name}\n\n"
             f"*{db.get_text('exp_format_course')}*: {course_name}\n\n"
-            f"*{db.get_text('exp_format_teaching')}*:\n{teaching_style}\n\n"
-            f"*{db.get_text('exp_format_notes')}*:\n{notes}\n\n"
-            f"*{db.get_text('exp_format_project')}*:\n{project}\n\n"
+            f"*{db.get_text('exp_format_teaching')}*: {teaching_style}\n\n"
+            f"*{db.get_text('exp_format_notes')}*: {notes}\n\n"
+            f"*{db.get_text('exp_format_project')}*: {project}\n\n"
             f"*{db.get_text('exp_format_attendance')}*: {attendance_status} \\- {attendance_details}\n\n"
-            f"*{db.get_text('exp_format_exam')}*:\n{exam}\n\n"
-            f"*{db.get_text('exp_format_conclusion')}*:\n{conclusion}\n\n"
+            f"*{db.get_text('exp_format_exam')}*: {exam}\n\n"
+            f"*{db.get_text('exp_format_conclusion')}*: {conclusion}\n\n"
             f"{def_md(db.get_text('exp_format_footer'))}\n\n"
             f"*{db.get_text('exp_format_tags')}*: {tags}")
 # END OF CHANGE
