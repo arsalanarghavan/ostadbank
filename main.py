@@ -121,21 +121,41 @@ async def check_channel_membership(update: Update, context: ContextTypes.DEFAULT
         )
     return is_member_of_all
 
+# ----------------- START: تابع اصلاح شده -----------------
 def format_experience(exp: Experience, md_version: int = 2) -> str:
+    # تابع escape_markdown را مستقیما اینجا استفاده می‌کنیم
     def def_md(text):
         return escape_markdown(str(text), version=md_version)
-    tags = f"#{exp.field.name.replace(' ', '_')} #{exp.major.name.replace(' ', '_')} #{exp.professor.name.replace(' ', '_')} #{exp.course.name.replace(' ', '_')}"
+
+    # تمام متغیرها را ابتدا escape می‌کنیم
+    field_name = def_md(exp.field.name)
+    major_name = def_md(exp.major.name)
+    professor_name = def_md(exp.professor.name)
+    course_name = def_md(exp.course.name)
+    teaching_style = def_md(exp.teaching_style)
+    notes = def_md(exp.notes)
+    project = def_md(exp.project)
+    attendance_details = def_md(exp.attendance_details)
+    exam = def_md(exp.exam)
+    conclusion = def_md(exp.conclusion)
+
+    # تگ‌ها نیازی به escape ندارند چون خودمان می‌سازیمشان و # را escape می‌کنیم
+    tags = f"\\#{exp.field.name.replace(' ', '_')} \\#{exp.major.name.replace(' ', '_')} \\#{exp.professor.name.replace(' ', '_')} \\#{exp.course.name.replace(' ', '_')}"
+
     attendance_text = db.get_text('exp_format_attendance_yes') if exp.attendance_required else db.get_text('exp_format_attendance_no')
-    return (f"{db.get_text('exp_format_field')}: {def_md(exp.field.name)} ({def_md(exp.major.name)})\n"
-            f"{db.get_text('exp_format_professor')}: {def_md(exp.professor.name)}\n"
-            f"{db.get_text('exp_format_course')}: {def_md(exp.course.name)}\n"
-            f"{db.get_text('exp_format_teaching')}:\n{def_md(exp.teaching_style)}\n"
-            f"{db.get_text('exp_format_notes')}:\n{def_md(exp.notes)}\n"
-            f"{db.get_text('exp_format_project')}:\n{def_md(exp.project)}\n"
-            f"{db.get_text('exp_format_attendance')}: {attendance_text}\n{def_md(exp.attendance_details)}\n"
-            f"{db.get_text('exp_format_exam')}:\n{def_md(exp.exam)}\n"
-            f"{db.get_text('exp_format_conclusion')}:\n{def_md(exp.conclusion)}\n"
-            f"{db.get_text('exp_format_footer')}\n{db.get_text('exp_format_tags')}: {def_md(tags)}")
+
+    # حالا متن نهایی را با متغیرهای escape شده می‌سازیم
+    return (f"{db.get_text('exp_format_field')}: {field_name} \\({major_name}\\)\n"
+            f"{db.get_text('exp_format_professor')}: {professor_name}\n"
+            f"{db.get_text('exp_format_course')}: {course_name}\n"
+            f"{db.get_text('exp_format_teaching')}:\n{teaching_style}\n"
+            f"{db.get_text('exp_format_notes')}:\n{notes}\n"
+            f"{db.get_text('exp_format_project')}:\n{project}\n"
+            f"{db.get_text('exp_format_attendance')}: {attendance_text}\n{attendance_details}\n"
+            f"{db.get_text('exp_format_exam')}:\n{exam}\n"
+            f"{db.get_text('exp_format_conclusion')}:\n{conclusion}\n"
+            f"{def_md(db.get_text('exp_format_footer'))}\n{db.get_text('exp_format_tags')}: {tags}")
+# ----------------- END: تابع اصلاح شده -----------------
 
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     db.add_user(update.effective_user.id, update.effective_user.first_name)
