@@ -319,8 +319,6 @@ def get_experience(exp_id):
             joinedload(Experience.professor),
             joinedload(Experience.course)
         ).filter(Experience.id == exp_id).first()
-        if exp:
-            s.expunge(exp)
         return exp
 
 def get_user_experiences(user_id, page=1, per_page=10):
