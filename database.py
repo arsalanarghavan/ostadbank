@@ -317,7 +317,7 @@ def get_experience(exp_id):
             joinedload(Experience.major),
             joinedload(Experience.professor),
             joinedload(Experience.course)
-        ).get(exp_id)
+        ).filter(Experience.id == exp_id).first()
 
 def get_user_experiences(user_id, page=1, per_page=10):
     with session_scope() as s:
@@ -449,4 +449,4 @@ def get_experience_with_session(session, exp_id):
         joinedload(Experience.major),
         joinedload(Experience.professor),
         joinedload(Experience.course)
-    ).get(exp_id)
+    ).filter(Experience.id == exp_id).first()

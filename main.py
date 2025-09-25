@@ -27,11 +27,11 @@ from constants import (
     ATTENDANCE_CHOICE, CANCEL_SUBMISSION, ADMIN_MAIN_PANEL, ADMIN_LIST_ITEMS,
     ADMIN_LIST_TEXTS, ITEM_ADD, ADMIN_ADD, ITEM_EDIT, TEXT_EDIT, ITEM_DELETE,
     ITEM_CONFIRM_DELETE, COMPLEX_ITEM_SELECT_PARENT, EXPERIENCE_APPROVAL,
-    SUBMIT_EXP_BTN_KEY, MY_EXPS_BTN_KEY, RULES_BTN_KEY, SEARCH_BTN_KEY, CHECK_MEMBERSHIP,
+    SUBMIT_EXP_BTN_KEY, MY_EXPS_BTN_KEY, RULES_BTN_KEY, CHECK_MEMBERSHIP,
     ADMIN_MANAGE_CHANNELS, ADMIN_ADD_CHANNEL, ADMIN_DELETE_CHANNEL, ADMIN_TOGGLE_FORCE_SUB,
     ADMIN_MANAGE_EXPERIENCES, ADMIN_LIST_PENDING_EXPERIENCES, ADMIN_PENDING_EXPERIENCE_DETAIL,
     ADMIN_SEARCH_EXPERIENCES, ADMIN_SEARCH_RESULTS_PAGE, ADMIN_SEARCH_DETAIL,
-    EXPERIENCE_DELETE_CONTENT, USER_SEARCH_PROMPT_KEY, USER_SEARCH_NO_RESULTS_KEY,
+    EXPERIENCE_DELETE_CONTENT, USER_SEARCH_RESULT, USER_SEARCH_NO_RESULTS_KEY,
     USER_SEARCH_HEADER_KEY
 )
 
@@ -48,6 +48,9 @@ PREFIX_MAP = {
     'field': 'رشته', 'major': 'گرایش', 'professor': 'استاد',
     'course': 'درس', 'admin': 'ادمین', 'text': 'متن'
 }
+
+# --- Constants for Message Length ---
+MAX_MESSAGE_LENGTH = 4096
 
 async def backup_database(context: ContextTypes.DEFAULT_TYPE):
     logger.info("Starting scheduled database backup...")
@@ -237,20 +240,18 @@ async def experience_detail_callback(update: Update, context: ContextTypes.DEFAU
     parts = query.data.split('_')
     exp_id = int(parts[-1])
     page = int(parts[-2])
-
-    with db.session_scope() as s:
-        exp = db.get_experience_with_session(s, exp_id)
-
-        if not exp:
-            await query.edit_message_text("متاسفانه این تجربه پیدا نشد.")
-            return
-            
-        keyboard = kb.experience_detail_keyboard(exp_id, page)
-        await query.edit_message_text(
-            format_experience(exp, md_version=2),
-            parse_mode=constants.ParseMode.MARKDOWN_V2,
-            reply_markup=keyboard
-        )
+    
+    exp = db.get_experience(exp_id)
+    if not exp:
+        await query.edit_message_text("متاسفانه این تجربه پیدا نشد.")
+        return
+        
+    keyboard = kb.experience_detail_keyboard(exp_id, page)
+    await query.edit_message_text(
+        format_experience(exp, md_version=2),
+        parse_mode=constants.ParseMode.MARKDOWN_V2,
+        reply_markup=keyboard
+    )
 
 async def edit_experience_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -619,24 +620,22 @@ async def delete_experience_content_callback(update: Update, context: ContextTyp
     
     exp_id = int(query.data.split('_')[-1])
     
-    with db.session_scope() as s:
-        exp = db.get_experience_with_session(s, exp_id)
-        if not exp or not exp.channel_message_id:
-            await query.answer("خطا: این نظر در کانال یافت نشد یا شناسه آن ثبت نشده است.", show_alert=True)
-            return
-            
-        try:
-            await context.bot.edit_message_text(
-                chat_id=config.CHANNEL_ID,
-                message_id=exp.channel_message_id,
-                text=format_experience(exp, redacted=True),
-                parse_mode=constants.ParseMode.MARKDOWN_V2
-            )
-            await query.answer(db.get_text('admin_content_deleted_success'), show_alert=True)
-        except TelegramError as e:
-            logger.error(f"Failed to edit message in channel: {e}")
-            await query.answer(f"خطا در ویرایش پیام: {e}", show_alert=True)
-
+    exp = db.get_experience(exp_id)
+    if not exp or not exp.channel_message_id:
+        await query.answer("خطا: این نظر در کانال یافت نشد یا شناسه آن ثبت نشده است.", show_alert=True)
+        return
+        
+    try:
+        await context.bot.edit_message_text(
+            chat_id=config.CHANNEL_ID,
+            message_id=exp.channel_message_id,
+            text=format_experience(exp, redacted=True),
+            parse_mode=constants.ParseMode.MARKDOWN_V2
+        )
+        await query.answer(db.get_text('admin_content_deleted_success'), show_alert=True)
+    except TelegramError as e:
+        logger.error(f"Failed to edit message in channel: {e}")
+        await query.answer(f"خطا در ویرایش پیام: {e}", show_alert=True)
 
 async def broadcast_start_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> States:
     if not await check_admin(update, context): return ConversationHandler.END
@@ -910,51 +909,37 @@ async def admin_search_detail_callback(update: Update, context: ContextTypes.DEF
             reply_markup=kb.admin_approval_keyboard(exp.id, user, from_list_page=page, from_search=True)
         )
 
-async def user_search_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> States:
-    """Starts the user search conversation."""
-    await update.message.reply_text(db.get_text(USER_SEARCH_PROMPT_KEY))
-    return States.GETTING_USER_SEARCH_QUERY
-
-async def user_search_receive_query(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Receives user's search query and displays results."""
+async def handle_global_search(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handles any text message as a potential search query."""
     query_str = update.message.text
-    experiences, _ = db.search_experiences_for_user(query_str, page=1, per_page=50) # Show more results for direct search
+    if len(query_str) < 3: # Avoid searching for very short texts
+        return
+
+    experiences, _ = db.search_experiences_for_user(query_str, per_page=20)
 
     if not experiences:
-        await update.message.reply_text(db.get_text(USER_SEARCH_NO_RESULTS_KEY))
-        return States.GETTING_USER_SEARCH_QUERY
+        await update.message.reply_text(db.get_text(USER_SEARCH_NO_RESULTS_KEY, query=query_str))
+        return
 
-    # Store results in user_data to avoid re-querying
-    context.user_data['search_results'] = {f"{exp['course_name']} - {exp['professor_name']}": exp['id'] for exp in experiences}
-
-    keyboard = kb.user_search_results_keyboard(experiences)
+    keyboard = kb.user_search_inline_keyboard(experiences)
     await update.message.reply_text(db.get_text(USER_SEARCH_HEADER_KEY, query=query_str), reply_markup=keyboard)
-    return States.GETTING_USER_SEARCH_QUERY
 
-async def user_search_show_detail(update: Update, context: ContextTypes.DEFAULT_TYPE) -> States:
-    """Shows the detail of a selected experience from search results."""
+async def show_user_search_result(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Callback function to show a selected search result."""
+    query = update.callback_query
+    await query.answer()
     
-    selection = update.message.text
-    search_results = context.user_data.get('search_results', {})
-    exp_id = search_results.get(selection)
-    
-    if not exp_id:
-        # If the text doesn't match a button, treat it as a new search
-        return await user_search_receive_query(update, context)
-
+    exp_id = int(query.data.split('_')[-1])
     exp = db.get_experience(exp_id)
+    
     if exp:
-        await update.message.reply_text(
+        await query.message.reply_text(
             format_experience(exp, md_version=2),
-            parse_mode=constants.ParseMode.MARKDOWN_V2,
-            reply_markup=kb.main_menu() # Go back to main menu after showing result
+            parse_mode=constants.ParseMode.MARKDOWN_V2
         )
-        context.user_data.pop('search_results', None) # Clear search results
-        return ConversationHandler.END
     else:
-        await update.message.reply_text("متاسفانه این تجربه پیدا نشد.")
-        return States.GETTING_USER_SEARCH_QUERY
-        
+        await query.message.reply_text("متاسفانه این تجربه پیدا نشد.")
+
 async def inline_search_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handles inline search queries."""
     query = update.inline_query.query
@@ -966,7 +951,6 @@ async def inline_search_handler(update: Update, context: ContextTypes.DEFAULT_TY
 
     for exp in experiences:
         exp_text = format_experience(exp, md_version=2)
-        # Ensure the message text does not exceed the maximum length
         if len(exp_text) > MAX_MESSAGE_LENGTH:
             exp_text = exp_text[:MAX_MESSAGE_LENGTH - 10] + "\n\n\\.\\.\\."
             
@@ -982,7 +966,6 @@ async def inline_search_handler(update: Update, context: ContextTypes.DEFAULT_TY
             )
         )
     await update.inline_query.answer(results, cache_time=5)
-
 
 ptb_app = Application.builder().token(config.BOT_TOKEN).build()
 
@@ -1009,19 +992,7 @@ submission_handler = ConversationHandler(
         States.GETTING_EXAM: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_exam)],
         States.GETTING_CONCLUSION: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_conclusion_and_finish)],
     },
-    fallbacks=[
-        CallbackQueryHandler(cancel_submission, pattern=CANCEL_SUBMISSION),
-        MessageHandler(filters.Regex('^' + db.get_text('btn_main_menu') + '$'), back_to_main_menu),
-    ],
-    **conv_defaults
-)
-
-user_search_handler = ConversationHandler(
-    entry_points=[MessageHandler(filters.Regex('^' + db.get_text(SEARCH_BTN_KEY) + '$'), user_search_start)],
-    states={
-        States.GETTING_USER_SEARCH_QUERY: [MessageHandler(filters.TEXT & ~filters.COMMAND, user_search_show_detail)],
-    },
-    fallbacks=[MessageHandler(filters.Regex('^' + db.get_text('btn_main_menu') + '$'), back_to_main_menu)],
+    fallbacks=[CallbackQueryHandler(cancel_submission, pattern=CANCEL_SUBMISSION)],
     **conv_defaults
 )
 
@@ -1094,7 +1065,7 @@ ptb_app.add_handler(MessageHandler(filters.Regex('^' + db.get_text('btn_admin_ma
 ptb_app.add_handler(MessageHandler(filters.Regex('^' + db.get_text('btn_admin_manage_texts') + '$'), lambda u, c: admin_list_items_command(u, c, 'texts')))
 ptb_app.add_handler(MessageHandler(filters.Regex('^' + db.get_text('btn_admin_manage_admins') + '$'), lambda u, c: admin_list_items_command(u, c, 'admin')))
 
-# Conversation Handlers
+# Conversation Handlers (Order is important)
 ptb_app.add_handler(submission_handler)
 ptb_app.add_handler(broadcast_handler)
 ptb_app.add_handler(single_message_handler)
@@ -1102,8 +1073,7 @@ ptb_app.add_handler(add_channel_handler)
 ptb_app.add_handler(item_add_handler)
 ptb_app.add_handler(item_edit_handler)
 ptb_app.add_handler(text_edit_handler)
-ptb_app.add_handler(search_handler) 
-ptb_app.add_handler(user_search_handler) # Add user search handler
+ptb_app.add_handler(search_handler)
 
 # Inline Query Handler
 ptb_app.add_handler(InlineQueryHandler(inline_search_handler))
@@ -1130,6 +1100,11 @@ ptb_app.add_handler(CallbackQueryHandler(admin_pending_detail_callback, pattern=
 ptb_app.add_handler(CallbackQueryHandler(search_results_page_callback, pattern=ADMIN_SEARCH_RESULTS_PAGE))
 ptb_app.add_handler(CallbackQueryHandler(admin_search_detail_callback, pattern=ADMIN_SEARCH_DETAIL))
 
+# User search handlers
+ptb_app.add_handler(CallbackQueryHandler(show_user_search_result, pattern=USER_SEARCH_RESULT))
+
+# Global text handler for search (must be one of the last handlers)
+ptb_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_global_search))
 
 async def on_startup(application: Application):
     application.job_queue.run_repeating(backup_database, interval=1800, first=15)
