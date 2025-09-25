@@ -170,28 +170,51 @@ async def my_experiences_command(update: Update, context: ContextTypes.DEFAULT_T
         return
 
     user_id = update.effective_user.id
-    experiences_data = db.get_user_experiences(user_id)
+    experiences, total_pages = db.get_user_experiences(user_id, page=1)
 
-    if not experiences_data:
+    if not experiences:
         await update.message.reply_text(db.get_text('my_experiences_empty'))
         return
-
-    response_lines = [db.get_text('my_experiences_header')]
-    status_map = {
-        ExperienceStatus.PENDING: db.get_text('status_pending'),
-        ExperienceStatus.APPROVED: db.get_text('status_approved'),
-        ExperienceStatus.REJECTED: db.get_text('status_rejected')
-    }
-
-    for exp_data in experiences_data:
-        course_name = escape_markdown(exp_data['course_name'], version=2)
-        prof_name = escape_markdown(exp_data['professor_name'], version=2)
-        status_text = status_map.get(exp_data['status'], str(exp_data['status']))
-        response_lines.append(f"*{course_name}* \\- *{prof_name}* \\({status_text}\\)")
-
-    response = "\n".join(response_lines)
-    await update.message.reply_text(response, parse_mode=constants.ParseMode.MARKDOWN_V2)
+    
+    keyboard = kb.my_experiences_keyboard(experiences, 1, total_pages)
+    await update.message.reply_text(db.get_text('my_experiences_header'), reply_markup=keyboard)
 # -------------------- END: CORRECTED FUNCTION --------------------
+
+# ------------------- START: NEW FUNCTION -------------------
+async def my_experiences_page_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    
+    page = int(query.data.split('_')[-1])
+    user_id = update.effective_user.id
+    
+    experiences, total_pages = db.get_user_experiences(user_id, page=page)
+    
+    if not experiences:
+        await query.edit_message_text(db.get_text('my_experiences_empty'))
+        return
+
+    keyboard = kb.my_experiences_keyboard(experiences, page, total_pages)
+    await query.edit_message_text(db.get_text('my_experiences_header'), reply_markup=keyboard)
+
+async def experience_detail_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    
+    exp_id = int(query.data.split('_')[-1])
+    exp = db.get_experience(exp_id)
+
+    if not exp:
+        await query.edit_message_text("متاسفانه این تجربه پیدا نشد.")
+        return
+        
+    back_button = InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت به لیست", callback_data="my_exps_1")]])
+    await query.edit_message_text(
+        format_experience(exp, md_version=2),
+        parse_mode=constants.ParseMode.MARKDOWN_V2,
+        reply_markup=back_button
+    )
+# -------------------- END: NEW FUNCTION --------------------
 
 
 async def rules_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -204,6 +227,8 @@ async def submission_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     fields, _ = db.get_paginated_list(Field, per_page=100)
     await update.message.reply_text(db.get_text('submission_start'), reply_markup=kb.dynamic_list_keyboard(fields, 'field'))
     return States.SELECTING_FIELD
+
+# ... (rest of the functions remain the same) ...
 
 async def select_field(update: Update, context: ContextTypes.DEFAULT_TYPE) -> States:
     query = update.callback_query
@@ -614,6 +639,8 @@ async def text_edit_receive_value(update: Update, context: ContextTypes.DEFAULT_
 
 ptb_app = Application.builder().token(config.BOT_TOKEN).build()
 
+# ... (Conversation Handlers remain the same) ...
+
 conv_defaults = {'per_message': False}
 submission_handler = ConversationHandler(
     entry_points=[MessageHandler(filters.Regex('^' + db.get_text(SUBMIT_EXP_BTN_KEY) + '$'), submission_start)],
@@ -700,6 +727,12 @@ ptb_app.add_handler(CallbackQueryHandler(admin_list_items_callback, pattern=ADMI
 ptb_app.add_handler(CallbackQueryHandler(admin_list_items_callback, pattern=ADMIN_LIST_TEXTS))
 ptb_app.add_handler(CallbackQueryHandler(item_delete_callback, pattern=ITEM_DELETE))
 ptb_app.add_handler(CallbackQueryHandler(item_confirm_delete_callback, pattern=ITEM_CONFIRM_DELETE))
+
+# ------------------- START: NEW HANDLERS -------------------
+ptb_app.add_handler(CallbackQueryHandler(my_experiences_page_callback, pattern=r"^my_exps_"))
+ptb_app.add_handler(CallbackQueryHandler(experience_detail_callback, pattern=r"^exp_detail_"))
+# -------------------- END: NEW HANDLERS --------------------
+
 
 async def on_startup(application: Application):
     application.job_queue.run_repeating(backup_database, interval=1800, first=15)

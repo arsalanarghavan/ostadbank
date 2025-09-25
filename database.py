@@ -1,4 +1,4 @@
-# database.py (Final and definitive corrected version)
+# database.py (Final Corrected Version)
 
 from sqlalchemy.orm import sessionmaker, joinedload
 from contextlib import contextmanager
@@ -202,30 +202,35 @@ def get_experience(exp_id):
         ).get(exp_id)
 
 # ------------------- START: CORRECTED FUNCTION -------------------
-def get_user_experiences(user_id):
+def get_user_experiences(user_id, page=1, per_page=10):
     """
-    Get all experiences for a user, returning a list of dictionaries
-    to avoid DetachedInstanceError.
+    Get a paginated list of a user's experiences, ordered by creation date.
+    Returns a list of dictionaries and the total number of pages.
     """
     with session_scope() as s:
-        exps = s.query(Experience).options(
+        query = s.query(Experience).options(
             joinedload(Experience.course),
             joinedload(Experience.professor)
-        ).filter_by(user_id=user_id).all()
+        ).filter_by(user_id=user_id)
+
+        total_items = query.count()
+        total_pages = math.ceil(total_items / per_page)
+        
+        offset = (page - 1) * per_page
+        exps = query.order_by(Experience.created_at.desc()).limit(per_page).offset(offset).all()
 
         results = []
         for exp in exps:
-            # Safely access attributes within the session
             course_name = exp.course.name if exp.course else "نامشخص"
             professor_name = exp.professor.name if exp.professor else "نامشخص"
             results.append({
+                'id': exp.id,
                 'course_name': course_name,
                 'professor_name': professor_name,
                 'status': exp.status
             })
-        return results
+        return results, total_pages
 # -------------------- END: CORRECTED FUNCTION --------------------
-
 
 def add_item(model, **kwargs):
     """Add a new item to the database."""

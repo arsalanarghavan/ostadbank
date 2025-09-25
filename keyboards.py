@@ -1,8 +1,8 @@
-# keyboards.py
+# keyboards.py (Final Corrected Version)
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup
 import database as db
-from models import RequiredChannel
+from models import RequiredChannel, ExperienceStatus
 
 def main_menu():
     """Returns the main menu keyboard for regular users."""
@@ -10,6 +10,35 @@ def main_menu():
         [db.get_text('btn_submit_experience')],
         [db.get_text('btn_my_experiences'), db.get_text('btn_rules')]
     ], resize_keyboard=True)
+
+# ------------------- START: NEW FUNCTION -------------------
+def my_experiences_keyboard(experiences, current_page, total_pages):
+    """Creates an inline keyboard for the user's experiences with pagination."""
+    keyboard = []
+    
+    status_map = {
+        ExperienceStatus.PENDING: '⏳',
+        ExperienceStatus.APPROVED: '✅',
+        ExperienceStatus.REJECTED: '❌'
+    }
+
+    for exp in experiences:
+        status_emoji = status_map.get(exp['status'], '❔')
+        button_text = f"{status_emoji} {exp['course_name']} - {exp['professor_name']}"
+        keyboard.append([InlineKeyboardButton(button_text, callback_data=f"exp_detail_{exp['id']}")])
+
+    pagination_row = []
+    if current_page > 1:
+        pagination_row.append(InlineKeyboardButton(db.get_text('btn_prev_page'), callback_data=f"my_exps_{current_page - 1}"))
+    if current_page < total_pages:
+        pagination_row.append(InlineKeyboardButton(db.get_text('btn_next_page'), callback_data=f"my_exps_{current_page + 1}"))
+    
+    if pagination_row:
+        keyboard.append(pagination_row)
+
+    return InlineKeyboardMarkup(keyboard)
+# -------------------- END: NEW FUNCTION --------------------
+
 
 def admin_panel_main():
     """Returns the main keyboard for the admin panel."""
@@ -34,7 +63,6 @@ def admin_manage_item_list(items, prefix, current_page, total_pages):
     """
     keyboard = []
     for item in items:
-        # Use dictionary access
         name = item.get('name') or f"Admin ID: {item.get('user_id')}"
         item_id = item['id']
         
@@ -95,10 +123,8 @@ def back_to_list_keyboard(prefix, page=1, is_main_panel=False):
     if is_main_panel:
         return InlineKeyboardMarkup([[InlineKeyboardButton(db.get_text('btn_back_to_panel'), callback_data="admin_main_panel")]])
     
-    # For texts, the prefix is different in callback
     list_prefix = 'texts' if prefix == 'texts' else prefix
     return InlineKeyboardMarkup([[InlineKeyboardButton(db.get_text('btn_back_to_list'), callback_data=f"admin_list_{list_prefix}_{page}")]])
-
 
 def parent_field_selection_keyboard(fields, prefix, page=1):
     """
@@ -156,8 +182,8 @@ def rejection_reasons_keyboard(experience_id):
 def join_channel_keyboard():
     channels = db.get_all_required_channels()
     keyboard = []
-    for channel in channels:
-        keyboard.append([InlineKeyboardButton(f"عضویت در کانال", url=channel.channel_link)])
+    for channel_data in channels:
+        keyboard.append([InlineKeyboardButton("عضویت در کانال", url=channel_data['channel_link'])])
     keyboard.append([InlineKeyboardButton(db.get_text('btn_i_am_member'), callback_data="check_membership")])
     return InlineKeyboardMarkup(keyboard)
 
@@ -168,8 +194,8 @@ def admin_manage_channels_keyboard():
     keyboard = []
     for channel in channels:
         keyboard.append([
-            InlineKeyboardButton(channel.channel_link, url=channel.channel_link),
-            InlineKeyboardButton("🗑️ حذف", callback_data=f"admin_delete_channel_{channel.id}")
+            InlineKeyboardButton(channel['channel_link'], url=channel['channel_link']),
+            InlineKeyboardButton("🗑️ حذف", callback_data=f"admin_delete_channel_{channel['id']}")
         ])
     
     keyboard.append([InlineKeyboardButton("➕ افزودن کانال جدید", callback_data="admin_add_channel")])
