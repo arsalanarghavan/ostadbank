@@ -3,6 +3,7 @@ import asyncio
 import datetime
 import os
 import re
+import unicodedata  # <--- کتابخانه جدید برای نرمال‌سازی
 from telegram import Update, constants, ChatMember, InlineKeyboardMarkup, ReplyKeyboardRemove
 from telegram.ext import (
     Application, CommandHandler, MessageHandler, ConversationHandler,
@@ -35,10 +36,7 @@ from constants import (
     USER_SEARCH_HEADER_KEY, USER_SEARCH_PROMPT_KEY
 )
 
-# --- START OF IMPORTANT CHANGE ---
-# Configure logging to show INFO level messages which will help in debugging.
 logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO)
-# --- END OF IMPORTANT CHANGE ---
 logger = logging.getLogger(__name__)
 
 db.initialize_database()
@@ -149,28 +147,30 @@ def format_experience(exp, md_version: int = 2, redacted=False) -> str:
             "]+", flags=re.UNICODE)
         return emoji_pattern.sub(r'', text).strip()
 
-    # --- START OF THE FINAL FIX ---
     def make_safe_tag(name: str) -> str:
         """
-        A robust function to create a safe hashtag from a string.
-        It replaces spaces, ZWNJ, and hyphens with a single underscore.
-        Also includes logging for debugging purposes.
+        The definitive, most robust function to create a safe hashtag.
+        It normalizes unicode, removes emojis, and replaces separators with underscores.
         """
-        # Step 1: Remove emojis and leading/trailing whitespace
-        text_no_emoji = remove_emojis(name)
-        
-        # Step 2: Replace one or more occurrences of space, ZWNJ, or hyphen with a single underscore
-        # \s -> matches any whitespace character
-        # \u200c -> matches the Zero-Width Non-Joiner (نیم‌فاصله)
-        # - -> matches the hyphen
-        # + -> ensures that multiple separators in a row (e.g., "word1  word2") become one underscore
-        safe_name = re.sub(r'[\s\u200c-]+', '_', text_no_emoji)
-        
-        # Step 3: Log the transformation for debugging
-        logger.info(f"Tag transformation: Original='{name}' -> EmojiRemoved='{text_no_emoji}' -> FinalTag='{safe_name}'")
-        
-        return safe_name
-    # --- END OF THE FINAL FIX ---
+        try:
+            # Step 1: Normalize the string to NFC form to handle composite characters.
+            # This is the most critical step to solve the hidden issue.
+            normalized_name = unicodedata.normalize('NFC', name)
+            
+            # Step 2: Remove emojis from the normalized string.
+            text_no_emoji = remove_emojis(normalized_name)
+            
+            # Step 3: Replace all whitespace, ZWNJ, and hyphens with a single underscore.
+            safe_name = re.sub(r'[\s\u200c-]+', '_', text_no_emoji)
+            
+            # Step 4: Final log to see the entire process.
+            logger.info(f"Tag Transformation: Original='{name}' -> Normalized='{normalized_name}' -> NoEmoji='{text_no_emoji}' -> Final='{safe_name}'")
+            
+            return safe_name
+        except Exception as e:
+            logger.error(f"Error in make_safe_tag for input '{name}': {e}")
+            # Fallback to a simple replace just in case of an unexpected error
+            return name.replace(' ', '_').replace('\u200c', '_')
 
     is_dataclass = isinstance(exp, ExperienceData)
 
