@@ -1,8 +1,13 @@
 import os
+import sys
 from logging.config import fileConfig
 from sqlalchemy import engine_from_config, pool
 from dotenv import load_dotenv
 from alembic import context
+
+# --- START: Add project root to Python path ---
+sys.path.insert(0, os.path.realpath(os.path.join(os.path.dirname(__file__), '..')))
+# --- END: Add project root to Python path ---
 
 # this is the Alembic Config object
 config = context.config

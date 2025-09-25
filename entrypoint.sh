@@ -1,5 +1,8 @@
 #!/bin/sh
 
+# Exit immediately if a command exits with a non-zero status.
+set -e
+
 # Wait for the database to be ready
 echo "Waiting for database connection..."
 while ! nc -z db 3306; do
