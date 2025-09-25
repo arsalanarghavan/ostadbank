@@ -109,7 +109,6 @@ def initialize_database():
             'btn_submit_experience': '✍️ ثبت تجربه',
             'btn_my_experiences': '📖 تجربه‌های من',
             'btn_rules': '📜 قوانین',
-            # START OF CHANGE - کلیدهای متنی دکمه‌های جدید ادمین
             'btn_admin_stats': '📊 آمار ربات',
             'btn_admin_broadcast': '📢 ارسال پیام همگانی',
             'btn_admin_single_message': '👤 ارسال پیام به کاربر',
@@ -117,7 +116,6 @@ def initialize_database():
             'btn_admin_manage_experiences': '📖 تاریخچه نظرات',
             'btn_admin_manage_admins': '👮‍♂️ مدیریت ادمین‌ها',
             'btn_main_menu': '⬅️ بازگشت به منوی اصلی',
-            # END OF CHANGE
             'btn_admin_manage_fields': '🎓 مدیریت رشته‌ها',
             'btn_admin_manage_majors': '📚 مدیریت گرایش‌ها',
             'btn_admin_manage_professors': '👨🏻‍🏫 مدیریت اساتید',
@@ -142,6 +140,13 @@ def initialize_database():
             'btn_reject_reason_2': 'نامفهوم',
             'btn_reject_reason_3': 'اسپم',
             'btn_i_am_member': 'عضو شدم ✅',
+            # START OF CHANGE - کلیدهای متنی جدید
+            'admin_experiences_menu_header': '📜 مدیریت نظرات',
+            'btn_admin_pending_reviews': '⏳ مشاهده نظرات در انتظار تایید',
+            'btn_admin_search_edit': '🔍 جستجو و ویرایش نظرات',
+            'admin_pending_header': '⏳ لیست نظرات در انتظار تایید:',
+            'admin_no_pending_experiences': 'هیچ نظر جدیدی برای بررسی وجود ندارد.'
+            # END OF CHANGE
         }
 
         for key, value in default_texts.items():
@@ -154,6 +159,33 @@ def get_text(key, **kwargs):
         if not txt:
             return f"⚠️[{key}]"
         return txt.value.format(**kwargs)
+
+# START OF CHANGE - تابع جدید برای دریافت نظرات بر اساس وضعیت
+def get_experiences_by_status(status: ExperienceStatus, page=1, per_page=10):
+    with session_scope() as s:
+        query = s.query(Experience).options(
+            joinedload(Experience.course),
+            joinedload(Experience.professor)
+        ).filter_by(status=status)
+
+        total_items = query.count()
+        total_pages = math.ceil(total_items / per_page)
+        
+        offset = (page - 1) * per_page
+        exps = query.order_by(Experience.created_at.asc()).limit(per_page).offset(offset).all()
+
+        results = []
+        for exp in exps:
+            course_name = exp.course.name if exp.course else "نامشخص"
+            professor_name = exp.professor.name if exp.professor else "نامشخص"
+            results.append({
+                'id': exp.id,
+                'course_name': course_name,
+                'professor_name': professor_name,
+                'status': exp.status
+            })
+        return results, total_pages
+# END OF CHANGE
 
 def get_paginated_list(model, page=1, per_page=8):
     with session_scope() as s:

@@ -25,7 +25,8 @@ from constants import (
     ADMIN_LIST_TEXTS, ITEM_ADD, ADMIN_ADD, ITEM_EDIT, TEXT_EDIT, ITEM_DELETE,
     ITEM_CONFIRM_DELETE, COMPLEX_ITEM_SELECT_PARENT, EXPERIENCE_APPROVAL,
     SUBMIT_EXP_BTN_KEY, MY_EXPS_BTN_KEY, RULES_BTN_KEY, CHECK_MEMBERSHIP,
-    ADMIN_MANAGE_CHANNELS, ADMIN_ADD_CHANNEL, ADMIN_DELETE_CHANNEL, ADMIN_TOGGLE_FORCE_SUB
+    ADMIN_MANAGE_CHANNELS, ADMIN_ADD_CHANNEL, ADMIN_DELETE_CHANNEL, ADMIN_TOGGLE_FORCE_SUB,
+    ADMIN_MANAGE_EXPERIENCES, ADMIN_LIST_PENDING_EXPERIENCES, ADMIN_PENDING_EXPERIENCE_DETAIL
 )
 
 logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO)
@@ -173,10 +174,8 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if await check_channel_membership(update, context):
         await update.message.reply_text(db.get_text('welcome'), reply_markup=kb.main_menu())
 
-# START OF CHANGE - تابع جدید برای بازگشت به منوی اصلی
 async def back_to_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(db.get_text('welcome'), reply_markup=kb.main_menu())
-# END OF CHANGE
 
 async def membership_check_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -457,7 +456,6 @@ async def cancel_submission(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     context.user_data.clear()
     return ConversationHandler.END
 
-# START OF CHANGE - توابع مربوط به پنل ادمین اصلاح شدند
 async def admin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if await check_admin(update, context):
         await update.message.reply_text(db.get_text('admin_panel_welcome'), reply_markup=kb.admin_panel_main())
@@ -465,20 +463,29 @@ async def admin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def admin_panel_callback_inline(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    await query.edit_message_text(db.get_text('admin_panel_welcome'), reply_markup=kb.admin_panel_main())
+    # Since the main panel is now a reply keyboard, this just sends a text confirmation
+    # and ensures the reply keyboard is visible.
+    await query.message.reply_text(
+        db.get_text('admin_panel_welcome'), 
+        reply_markup=kb.admin_panel_main()
+    )
+    # We can also delete the inline message if we want a cleaner interface
+    await query.message.delete()
+
 
 async def show_stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await check_admin(update, context): return
     stats = db.get_statistics()
     await update.message.reply_text(
         db.get_text('stats_message', **stats),
-        parse_mode=constants.ParseMode.MARKDOWN_V2
+        parse_mode=constants.ParseMode.MARKDOWN_V2,
+        reply_markup=kb.admin_panel_main()
     )
 
 async def admin_list_items_command(update: Update, context: ContextTypes.DEFAULT_TYPE, prefix: str):
     if not await check_admin(update, context): return
     
-    page = 1 # Always start at page 1 for regular buttons
+    page = 1
     
     if prefix == 'texts':
         items, total_pages = db.get_paginated_list(BotText, page=page)
@@ -493,12 +500,60 @@ async def admin_list_items_command(update: Update, context: ContextTypes.DEFAULT
 
     await update.message.reply_text(db.get_text(header_key), reply_markup=keyboard)
 
+
+# START OF CHANGE - توابع جدید برای مدیریت نظرات
 async def manage_experiences_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await check_admin(update, context): return
-    # This is a placeholder for the next development step
-    await update.message.reply_text("این بخش در حال ساخت است. در مرحله بعد، امکانات مدیریت نظرات به اینجا اضافه خواهد شد.")
+    await update.message.reply_text(
+        db.get_text('admin_experiences_menu_header'),
+        reply_markup=kb.admin_experience_menu()
+    )
 
+async def admin_pending_reviews_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not await check_admin(update, context): return
+    query = update.callback_query
+    await query.answer()
+
+    page = int(query.data.split('_')[-1])
+    
+    experiences, total_pages = db.get_experiences_by_status(ExperienceStatus.PENDING, page=page)
+    
+    if not experiences:
+        await query.edit_message_text(
+            db.get_text('admin_no_pending_experiences'),
+            reply_markup=kb.admin_experience_menu()
+        )
+        return
+
+    keyboard = kb.admin_pending_experiences_keyboard(experiences, page, total_pages)
+    await query.edit_message_text(db.get_text('admin_pending_header'), reply_markup=keyboard)
+
+async def admin_pending_detail_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not await check_admin(update, context): return
+    query = update.callback_query
+    await query.answer()
+
+    parts = query.data.split('_')
+    exp_id = int(parts[-1])
+    page = int(parts[-2])
+
+    with db.session_scope() as s:
+        exp = db.get_experience_with_session(s, exp_id)
+        if not exp:
+            await query.edit_message_text("متاسفانه این تجربه پیدا نشد.")
+            return
+        
+        user = s.query(User).filter_by(user_id=exp.user_id).first()
+        if not user: # Fallback if user is not in users table
+            user = update.effective_user 
+
+        await query.edit_message_text(
+            format_experience(exp, md_version=2),
+            parse_mode=constants.ParseMode.MARKDOWN_V2,
+            reply_markup=kb.admin_approval_keyboard(exp.id, user, from_list_page=page)
+        )
 # END OF CHANGE
+
 
 async def experience_approval_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await check_admin(update, context): return
@@ -824,7 +879,6 @@ text_edit_handler = ConversationHandler(
     fallbacks=[CallbackQueryHandler(cancel_submission, pattern=CANCEL_SUBMISSION)], **conv_defaults
 )
 
-# START OF CHANGE - هندلرهای پنل ادمین اصلاح شدند
 ptb_app.add_handler(CommandHandler("start", start_command))
 ptb_app.add_handler(CommandHandler("admin", admin_command))
 ptb_app.add_handler(MessageHandler(filters.Regex('^' + db.get_text(MY_EXPS_BTN_KEY) + '$'), my_experiences_command))
@@ -841,7 +895,6 @@ ptb_app.add_handler(MessageHandler(filters.Regex('^' + db.get_text('btn_admin_ma
 ptb_app.add_handler(MessageHandler(filters.Regex('^' + db.get_text('btn_admin_manage_courses') + '$'), lambda u, c: admin_list_items_command(u, c, 'course')))
 ptb_app.add_handler(MessageHandler(filters.Regex('^' + db.get_text('btn_admin_manage_texts') + '$'), lambda u, c: admin_list_items_command(u, c, 'texts')))
 ptb_app.add_handler(MessageHandler(filters.Regex('^' + db.get_text('btn_admin_manage_admins') + '$'), lambda u, c: admin_list_items_command(u, c, 'admin')))
-# END OF CHANGE
 
 ptb_app.add_handler(CallbackQueryHandler(membership_check_callback, pattern=CHECK_MEMBERSHIP))
 ptb_app.add_handler(submission_handler)
@@ -852,7 +905,6 @@ ptb_app.add_handler(item_add_handler)
 ptb_app.add_handler(item_edit_handler)
 ptb_app.add_handler(text_edit_handler)
 
-# Callback handlers for inline buttons (still needed for lists, approvals etc.)
 ptb_app.add_handler(CallbackQueryHandler(admin_panel_callback_inline, pattern="^admin_main_panel_inline$"))
 ptb_app.add_handler(CallbackQueryHandler(experience_approval_handler, pattern=EXPERIENCE_APPROVAL))
 ptb_app.add_handler(CallbackQueryHandler(admin_toggle_force_sub_callback, pattern=ADMIN_TOGGLE_FORCE_SUB))
@@ -865,6 +917,11 @@ ptb_app.add_handler(CallbackQueryHandler(my_experiences_page_callback, pattern=r
 ptb_app.add_handler(CallbackQueryHandler(experience_detail_callback, pattern=r"^exp_detail_"))
 ptb_app.add_handler(CallbackQueryHandler(edit_experience_callback, pattern=r"^edit_exp_"))
 
+# START OF CHANGE - هندلرهای جدید برای مدیریت نظرات
+ptb_app.add_handler(CallbackQueryHandler(manage_experiences_command, pattern=ADMIN_MANAGE_EXPERIENCES))
+ptb_app.add_handler(CallbackQueryHandler(admin_pending_reviews_callback, pattern=ADMIN_LIST_PENDING_EXPERIENCES))
+ptb_app.add_handler(CallbackQueryHandler(admin_pending_detail_callback, pattern=ADMIN_PENDING_EXPERIENCE_DETAIL))
+# END OF CHANGE
 
 async def on_startup(application: Application):
     application.job_queue.run_repeating(backup_database, interval=1800, first=15)

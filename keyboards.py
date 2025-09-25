@@ -11,7 +11,6 @@ def main_menu():
         [db.get_text('btn_my_experiences'), db.get_text('btn_rules')]
     ], resize_keyboard=True)
 
-# START OF CHANGE - منوی ادمین به دکمه‌های عادی تغییر کرد
 def admin_panel_main():
     """Returns the main keyboard for the admin panel as a ReplyKeyboard."""
     keyboard = [
@@ -24,6 +23,36 @@ def admin_panel_main():
         [db.get_text('btn_main_menu')]
     ]
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+
+# START OF CHANGE - کیبوردهای جدید برای مدیریت نظرات
+def admin_experience_menu():
+    """Shows the menu for managing experiences."""
+    keyboard = [
+        [InlineKeyboardButton(db.get_text('btn_admin_pending_reviews'), callback_data="admin_pending_exps_1")],
+        [InlineKeyboardButton(db.get_text('btn_admin_search_edit'), callback_data="admin_search_exps")],
+        [InlineKeyboardButton(db.get_text('btn_back_to_panel'), callback_data="admin_main_panel_inline")]
+    ]
+    return InlineKeyboardMarkup(keyboard)
+
+def admin_pending_experiences_keyboard(experiences, current_page, total_pages):
+    """Creates an inline keyboard for the admin's pending experiences list."""
+    keyboard = []
+
+    for exp in experiences:
+        button_text = f"ID: {exp['id']} - {exp['course_name']} - {exp['professor_name']}"
+        keyboard.append([InlineKeyboardButton(button_text, callback_data=f"admin_pending_detail_{current_page}_{exp['id']}")])
+
+    pagination_row = []
+    if current_page > 1:
+        pagination_row.append(InlineKeyboardButton(db.get_text('btn_prev_page'), callback_data=f"admin_pending_exps_{current_page - 1}"))
+    if current_page < total_pages:
+        pagination_row.append(InlineKeyboardButton(db.get_text('btn_next_page'), callback_data=f"admin_pending_exps_{current_page + 1}"))
+    
+    if pagination_row:
+        keyboard.append(pagination_row)
+    
+    keyboard.append([InlineKeyboardButton(db.get_text('btn_back_to_panel'), callback_data="admin_manage_experiences")])
+    return InlineKeyboardMarkup(keyboard)
 # END OF CHANGE
 
 def my_experiences_keyboard(experiences, current_page, total_pages):
@@ -39,7 +68,6 @@ def my_experiences_keyboard(experiences, current_page, total_pages):
     for exp in experiences:
         status_emoji = status_map.get(exp['status'], '❔')
         button_text = f"{status_emoji} {exp['course_name']} - {exp['professor_name']}"
-        # Pass the current page to the detail callback
         keyboard.append([InlineKeyboardButton(button_text, callback_data=f"exp_detail_{current_page}_{exp['id']}")])
 
     pagination_row = []
@@ -66,7 +94,6 @@ def confirm_edit_keyboard(experience_id, page=1):
     keyboard = [
         [
             InlineKeyboardButton("✅ بله، ویرایش کن", callback_data=f"confirm_edit_{experience_id}_{page}"),
-            # Go back to the detail view, not the list
             InlineKeyboardButton("❌ خیر", callback_data=f"exp_detail_{page}_{experience_id}")
         ]
     ]
@@ -154,7 +181,7 @@ def attendance_keyboard():
         InlineKeyboardButton(db.get_text('btn_attendance_no'), callback_data="attendance_no")
     ], [InlineKeyboardButton(db.get_text('btn_cancel'), callback_data="cancel_submission")]])
 
-def admin_approval_keyboard(experience_id, user):
+def admin_approval_keyboard(experience_id, user, from_list_page=None):
     keyboard = [
         [
             InlineKeyboardButton(db.get_text('btn_approve_exp'), callback_data=f"exp_approve_{experience_id}"),
@@ -168,6 +195,9 @@ def admin_approval_keyboard(experience_id, user):
     if user.username:
         keyboard.append([InlineKeyboardButton(f"@{user.username}", url=f"https://t.me/{user.username}")])
     
+    if from_list_page:
+        keyboard.append([InlineKeyboardButton(db.get_text('btn_back_to_list'), callback_data=f"admin_pending_exps_{from_list_page}")])
+
     return InlineKeyboardMarkup(keyboard)
 
 def rejection_reasons_keyboard(experience_id):
