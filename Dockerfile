@@ -1,6 +1,15 @@
 # Use an official Python runtime as a parent image
 FROM python:3.11-slim
 
+# ===================================================================
+# START OF CHANGES: Set environment to be fully UTF-8 compatible
+# This is crucial for handling Persian characters correctly.
+ENV LANG C.UTF-8
+ENV LC_ALL C.UTF-8
+ENV PYTHONUTF8 1
+# END OF CHANGES
+# ===================================================================
+
 # Set the working directory in the container
 WORKDIR /app
 
@@ -17,6 +26,7 @@ RUN apt-get update && apt-get install -y \
 
 # Copy the requirements file into the container
 COPY requirements.txt .
+
 # First, uninstall any potentially cached or incorrect version of the library
 RUN pip uninstall -y python-telegram-bot
 
