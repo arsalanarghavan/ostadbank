@@ -33,6 +33,7 @@ services:
     depends_on:
       db:
         condition: service_healthy
+    entrypoint: ["/app/entrypoint.sh"]
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.ostadbank.rule=Host(`${DOMAIN_NAME}`)"

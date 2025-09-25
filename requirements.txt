@@ -4,3 +4,4 @@ pymysql==1.1.0
 python-dotenv==1.0.1
 uvicorn
 fastapi
+alembic==1.13.1

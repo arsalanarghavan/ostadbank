@@ -255,6 +255,7 @@ async def edit_experience_callback(update: Update, context: ContextTypes.DEFAULT
     elif exp.status == ExperienceStatus.PENDING:
         await query.edit_message_text("برای ویرایش این تجربه، لطفاً یک تجربه جدید و اصلاح شده ثبت کنید. ادمین‌ها آخرین نسخه ارسالی شما را بررسی خواهند کرد.", reply_markup=kb.experience_detail_keyboard(exp_id))
 
+
 async def rules_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await check_channel_membership(update, context): return
     await update.message.reply_text(db.get_text('rules'), parse_mode=constants.ParseMode.MARKDOWN_V2)
@@ -540,7 +541,7 @@ async def admin_add_channel_get_link(update: Update, context: ContextTypes.DEFAU
     channel_id = context.user_data.pop('new_channel_id')
     channel_link = update.message.text.strip()
     try:
-        db.add_item(RequiredChannel, channel_id=channel_id, channel_link=channel_link)
+        new_channel = db.add_item(RequiredChannel, channel_id=channel_id, channel_link=channel_link)
         await update.message.reply_text("کانال اضافه شد.")
     except Exception as e:
         await update.message.reply_text(f"خطا: {e}")

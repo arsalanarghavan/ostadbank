@@ -1,4 +1,4 @@
-# database.py (Final Corrected Version)
+# database.py (Final Corrected Version for Alembic)
 
 from sqlalchemy.orm import sessionmaker, joinedload
 from contextlib import contextmanager
@@ -24,10 +24,9 @@ def session_scope():
     finally:
         session.close()
 
-# ... (initialize_database and other functions remain the same) ...
 def initialize_database():
-    """Create database tables and populate default texts if they don't exist."""
-    create_tables()
+    """Populate default texts if they don't exist."""
+    # create_tables()  <-- This line is now handled by Alembic
     with session_scope() as session:
         if not session.query(Admin).filter_by(user_id=config.OWNER_ID).first():
             session.add(Admin(user_id=config.OWNER_ID))
@@ -227,7 +226,9 @@ def add_item(model, **kwargs):
         new_item = model(**kwargs)
         s.add(new_item)
         s.flush()
-        return new_item
+        item_id = new_item.id
+        s.expunge(new_item)
+        return s.query(model).get(item_id)
 
 def update_item(model, item_id, **kwargs):
     with session_scope() as s:
@@ -246,9 +247,7 @@ def update_experience_status(exp_id: int, status: ExperienceStatus):
             return True
         return False
         
-# ------------------- START: NEW FUNCTIONS -------------------
 def set_experience_admin_message_id(exp_id: int, message_id: int, chat_id: int):
-    """Saves the admin message ID and chat ID for a specific experience."""
     with session_scope() as s:
         exp = s.query(Experience).get(exp_id)
         if exp:
@@ -258,14 +257,12 @@ def set_experience_admin_message_id(exp_id: int, message_id: int, chat_id: int):
         return False
 
 def reset_experience_status_for_resubmission(exp_id: int):
-    """Resets the status of an experience to PENDING for re-evaluation."""
     with session_scope() as s:
         exp = s.query(Experience).get(exp_id)
         if exp:
             exp.status = ExperienceStatus.PENDING
             return True
         return False
-# -------------------- END: NEW FUNCTIONS --------------------
 
 def add_user(user_id, first_name):
     with session_scope() as s:
