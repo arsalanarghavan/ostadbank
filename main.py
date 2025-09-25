@@ -146,10 +146,11 @@ def format_experience(exp, md_version: int = 2, redacted=False) -> str:
             "]+", flags=re.UNICODE)
         return emoji_pattern.sub(r'', text).strip()
 
-    def make_safe_tag(name: str) -> str:
+def make_safe_tag(name: str) -> str:
         text_no_emoji = remove_emojis(name)
-        safe_name = re.sub(r'[\s\u200c\-_]+', '_', text_no_emoji)
-        return safe_name
+        s1 = text_no_emoji.replace('\u200c', ' ')
+        s2 = re.sub(r'[\s\-_]+', '_', s1)
+        return s2
 
     # Check if 'exp' is the dataclass or the SQLAlchemy model
     is_dataclass = isinstance(exp, ExperienceData)
