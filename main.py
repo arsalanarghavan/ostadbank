@@ -16,7 +16,7 @@ import config
 import database as db
 import keyboards as kb
 from models import (Field, Major, Professor, Course, Experience, BotText, Admin,
-                    ExperienceStatus, RequiredChannel, Setting)
+                    ExperienceStatus, RequiredChannel, Setting, User)
 from constants import (
     States,
     FIELD_SELECT, MAJOR_SELECT, COURSE_SELECT, PROFESSOR_SELECT, PROFESSOR_ADD_NEW,
@@ -194,67 +194,72 @@ async def my_experiences_page_callback(update: Update, context: ContextTypes.DEF
     keyboard = kb.my_experiences_keyboard(experiences, page, total_pages)
     await query.edit_message_text(db.get_text('my_experiences_header'), reply_markup=keyboard)
 
+# ------------------- START: CORRECTED FUNCTION -------------------
 async def experience_detail_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     
     exp_id = int(query.data.split('_')[-1])
-    exp = db.get_experience(exp_id)
+    
+    with db.session_scope() as s:
+        exp = db.get_experience_with_session(s, exp_id)
 
-    if not exp:
-        await query.edit_message_text("متاسفانه این تجربه پیدا نشد.")
-        return
-        
-    keyboard = kb.experience_detail_keyboard(exp_id)
-    await query.edit_message_text(
-        format_experience(exp, md_version=2),
-        parse_mode=constants.ParseMode.MARKDOWN_V2,
-        reply_markup=keyboard
-    )
+        if not exp:
+            await query.edit_message_text("متاسفانه این تجربه پیدا نشد.")
+            return
+            
+        keyboard = kb.experience_detail_keyboard(exp_id)
+        await query.edit_message_text(
+            format_experience(exp, md_version=2),
+            parse_mode=constants.ParseMode.MARKDOWN_V2,
+            reply_markup=keyboard
+        )
+# -------------------- END: CORRECTED FUNCTION --------------------
 
+# ------------------- START: CORRECTED FUNCTION -------------------
 async def edit_experience_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handles the logic for editing or resubmitting an experience."""
     query = update.callback_query
     await query.answer()
     exp_id = int(query.data.split('_')[-1])
     
-    exp = db.get_experience(exp_id)
-    if not exp:
-        await query.edit_message_text("این تجربه پیدا نشد.")
-        return
+    with db.session_scope() as s:
+        exp = db.get_experience_with_session(s, exp_id)
+        if not exp:
+            await query.edit_message_text("این تجربه پیدا نشد.")
+            return
 
-    if exp.status in [ExperienceStatus.REJECTED, ExperienceStatus.APPROVED]:
-        db.reset_experience_status_for_resubmission(exp_id)
-        
-        with db.session_scope() as s:
+        if exp.status in [ExperienceStatus.REJECTED, ExperienceStatus.APPROVED]:
+            exp.status = ExperienceStatus.PENDING
+            
             admins = s.query(Admin).all()
             user = s.query(User).filter_by(user_id=exp.user_id).first()
-        
-        notification_text = f"*تجربه برای بررسی مجدد ارسال شد*\n\n" + escape_markdown(db.get_text('admin_new_experience_notification', exp_id=exp.id), version=2)
-        admin_message_text = notification_text + format_experience(exp)
-        
-        first_admin_message = None
-        for admin in admins:
-            try:
-                msg = await context.bot.send_message(
-                    chat_id=admin.user_id, 
-                    text=admin_message_text,
-                    reply_markup=kb.admin_approval_keyboard(exp.id, user),
-                    parse_mode=constants.ParseMode.MARKDOWN_V2
-                )
-                if not first_admin_message:
-                    first_admin_message = msg
-            except Exception as e:
-                logger.error(f"Failed to resend notification to admin {admin.user_id}: {e}")
-        
-        if first_admin_message:
-            db.set_experience_admin_message_id(exp.id, first_admin_message.message_id, first_admin_message.chat_id)
+            
+            notification_text = f"*تجربه برای بررسی مجدد ارسال شد*\n\n" + escape_markdown(db.get_text('admin_new_experience_notification', exp_id=exp.id), version=2)
+            admin_message_text = notification_text + format_experience(exp)
+            
+            first_admin_message = None
+            for admin in admins:
+                try:
+                    msg = await context.bot.send_message(
+                        chat_id=admin.user_id, 
+                        text=admin_message_text,
+                        reply_markup=kb.admin_approval_keyboard(exp.id, user),
+                        parse_mode=constants.ParseMode.MARKDOWN_V2
+                    )
+                    if not first_admin_message:
+                        first_admin_message = msg
+                except Exception as e:
+                    logger.error(f"Failed to resend notification to admin {admin.user_id}: {e}")
+            
+            if first_admin_message:
+                exp.admin_message_id = first_admin_message.message_id
+                exp.admin_chat_id = first_admin_message.chat_id
 
-        await query.edit_message_text("✅ تجربه شما با موفقیت برای بازبینی مجدد به ادمین‌ها ارسال شد.", reply_markup=kb.experience_detail_keyboard(exp_id))
+            await query.edit_message_text("✅ تجربه شما با موفقیت برای بازبینی مجدد به ادمین‌ها ارسال شد.", reply_markup=kb.experience_detail_keyboard(exp_id))
 
-    elif exp.status == ExperienceStatus.PENDING:
-        await query.edit_message_text("برای ویرایش این تجربه، لطفاً یک تجربه جدید و اصلاح شده ثبت کنید. ادمین‌ها آخرین نسخه ارسالی شما را بررسی خواهند کرد.", reply_markup=kb.experience_detail_keyboard(exp_id))
-
+        elif exp.status == ExperienceStatus.PENDING:
+            await query.edit_message_text("برای ویرایش این تجربه، لطفاً یک تجربه جدید و اصلاح شده ثبت کنید. ادمین‌ها آخرین نسخه ارسالی شما را بررسی خواهند کرد.", reply_markup=kb.experience_detail_keyboard(exp_id))
+# -------------------- END: CORRECTED FUNCTION --------------------
 
 async def rules_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await check_channel_membership(update, context): return
@@ -541,7 +546,7 @@ async def admin_add_channel_get_link(update: Update, context: ContextTypes.DEFAU
     channel_id = context.user_data.pop('new_channel_id')
     channel_link = update.message.text.strip()
     try:
-        new_channel = db.add_item(RequiredChannel, channel_id=channel_id, channel_link=channel_link)
+        db.add_item(RequiredChannel, channel_id=channel_id, channel_link=channel_link)
         await update.message.reply_text("کانال اضافه شد.")
     except Exception as e:
         await update.message.reply_text(f"خطا: {e}")
