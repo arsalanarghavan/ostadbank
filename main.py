@@ -147,12 +147,29 @@ def format_experience(exp, md_version: int = 2, redacted=False) -> str:
         return emoji_pattern.sub(r'', text).strip()
 
     def make_safe_tag(name: str) -> str:
+        """
+        این تابع یک تگ امن برای تلگرام با جداکننده آندرلاین می‌سازد.
+        به جای استفاده از regex یا replace، به صورت کاراکتر به کاراکتر پردازش می‌کند
+        تا از بروز مشکلات محیطی جلوگیری شود.
+        """
         text_no_emoji = remove_emojis(name)
-        safe_name = text_no_emoji.replace(' ', '_').replace('\u200c', '_').replace('-', '_')
-        while '__' in safe_name:
-            safe_name = safe_name.replace('__', '_')
-
-        return safe_name
+        safe_name = []
+        # پرچم برای جلوگیری از افزودن آندرلاین‌های متعدد پشت سر هم
+        last_char_was_underscore = False
+        
+        for char in text_no_emoji:
+            # اگر کاراکتر یکی از جداکننده‌ها بود (فاصله، نیم‌فاصله، خط تیره)
+            if char in ' \u200c-':
+                if not last_char_was_underscore:
+                    safe_name.append('_')
+                    last_char_was_underscore = True
+            else:
+                safe_name.append(char)
+                last_char_was_underscore = False
+        
+        # حذف آندرلاین‌های احتمالی از ابتدا و انتهای رشته
+        result = "".join(safe_name).strip('_')
+        return result
 
     # Check if 'exp' is the dataclass or the SQLAlchemy model
     is_dataclass = isinstance(exp, ExperienceData)
