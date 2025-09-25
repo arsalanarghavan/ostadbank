@@ -20,7 +20,7 @@ import config
 import database as db
 import keyboards as kb
 from models import (Field, Major, Professor, Course, Experience, BotText, Admin,
-                    ExperienceStatus, RequiredChannel, Setting, User)
+                    ExperienceStatus, RequiredChannel, Setting, User, ExperienceData)
 from constants import (
     States,
     FIELD_SELECT, MAJOR_SELECT, COURSE_SELECT, PROFESSOR_SELECT, PROFESSOR_ADD_NEW,
@@ -125,7 +125,7 @@ async def check_channel_membership(update: Update, context: ContextTypes.DEFAULT
         )
     return is_member_of_all
 
-def format_experience(exp: Experience, md_version: int = 2, redacted=False) -> str:
+def format_experience(exp, md_version: int = 2, redacted=False) -> str:
     def def_md(text):
         return escape_markdown(str(text), version=md_version)
 
@@ -150,10 +150,13 @@ def format_experience(exp: Experience, md_version: int = 2, redacted=False) -> s
         text_no_emoji = remove_emojis(name)
         return re.sub(r'[\s\-_]+', '_', text_no_emoji)
 
-    field_name = def_md(exp.field.name)
-    major_name = def_md(exp.major.name)
-    professor_name = def_md(exp.professor.name)
-    course_name = def_md(exp.course.name)
+    # Check if 'exp' is the dataclass or the SQLAlchemy model
+    is_dataclass = hasattr(exp, 'field_name')
+
+    field_name = def_md(exp.field_name if is_dataclass else exp.field.name)
+    major_name = def_md(exp.major_name if is_dataclass else exp.major.name)
+    professor_name = def_md(exp.professor_name if is_dataclass else exp.professor.name)
+    course_name = def_md(exp.course_name if is_dataclass else exp.course.name)
 
     if redacted:
         redacted_text = def_md(db.get_text('content_deleted_by_request'))
@@ -166,8 +169,10 @@ def format_experience(exp: Experience, md_version: int = 2, redacted=False) -> s
         exam = def_md(exp.exam)
         conclusion = def_md(exp.conclusion)
 
-    tags = (f"\\#{make_safe_tag(exp.field.name)} \\#{make_safe_tag(exp.major.name)} "
-            f"\\#{make_safe_tag(exp.professor.name)} \\#{make_safe_tag(exp.course.name)}")
+    tags = (f"\\#{make_safe_tag(exp.field_name if is_dataclass else exp.field.name)} "
+            f"\\#{make_safe_tag(exp.major_name if is_dataclass else exp.major.name)} "
+            f"\\#{make_safe_tag(exp.professor_name if is_dataclass else exp.professor.name)} "
+            f"\\#{make_safe_tag(exp.course_name if is_dataclass else exp.course.name)}")
             
     attendance_status = db.get_text('exp_format_attendance_yes') if exp.attendance_required else db.get_text('exp_format_attendance_no')
     
