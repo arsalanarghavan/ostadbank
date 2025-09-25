@@ -265,30 +265,47 @@ async def get_attendance_details(update: Update, context: ContextTypes.DEFAULT_T
 async def get_exam(update: Update, context: ContextTypes.DEFAULT_TYPE) -> States:
     return await get_text_input(update, context, 'exam', States.GETTING_CONCLUSION, 'ask_conclusion')
 
+# ----------------- START: تابع اصلاح شده -----------------
 async def get_conclusion_and_finish(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     user_input = update.message.text
     if len(user_input) > 1000:
         await update.message.reply_text("متن شما بیش از حد طولانی است. لطفا دوباره تلاش کنید:")
         return States.GETTING_CONCLUSION
+    
     context.user_data['experience']['conclusion'] = user_input
     exp_data = context.user_data['experience']
     user = update.effective_user
     exp_data['user_id'] = user.id
-    new_exp_id = db.add_item(Experience, **exp_data)
-    exp = db.get_experience(new_exp_id)
-    admin_message = db.get_text('admin_new_experience_notification', exp_id=exp.id) + format_experience(exp)
-    for admin in db.get_all_admins():
-        try:
-            await context.bot.send_message(
-                chat_id=admin.user_id, text=admin_message,
-                reply_markup=kb.admin_approval_keyboard(exp.id, user),
-                parse_mode=constants.ParseMode.MARKDOWN_V2
-            )
-        except Exception as e:
-            logger.error(f"Failed to send notification to admin {admin.user_id}: {e}")
+
+    # تمام عملیات دیتابیس را در یک session واحد انجام می‌دهیم تا خطا رخ ندهد
+    with db.session_scope() as s:
+        # 1. یک شیء Experience جدید می‌سازیم
+        new_exp = Experience(**exp_data)
+        s.add(new_exp)
+        s.flush()  # برای اینکه new_exp.id مقدار بگیرد
+
+        # 2. شیء را با تمام روابطش (relationships) رفرش می‌کنیم
+        # این کار تضمین می‌کند که به field, major و... دسترسی داریم
+        s.refresh(new_exp, attribute_names=['field', 'major', 'professor', 'course'])
+        
+        # 3. حالا پیام ادمین را با شیء متصل به session می‌سازیم
+        admin_message = db.get_text('admin_new_experience_notification', exp_id=new_exp.id) + format_experience(new_exp)
+        
+        # 4. پیام‌ها را برای ادمین‌ها ارسال می‌کنیم
+        for admin in s.query(Admin).all(): # از همین session برای کوئری ادمین‌ها استفاده می‌کنیم
+            try:
+                await context.bot.send_message(
+                    chat_id=admin.user_id, text=admin_message,
+                    reply_markup=kb.admin_approval_keyboard(new_exp.id, user),
+                    parse_mode=constants.ParseMode.MARKDOWN_V2
+                )
+            except Exception as e:
+                logger.error(f"Failed to send notification to admin {admin.user_id}: {e}")
+
     await update.message.reply_text(db.get_text('submission_success'), reply_markup=kb.main_menu())
     context.user_data.clear()
     return ConversationHandler.END
+# ----------------- END: تابع اصلاح شده -----------------
 
 async def cancel_submission(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     query = update.callback_query
