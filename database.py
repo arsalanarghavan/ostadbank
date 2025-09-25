@@ -78,7 +78,6 @@ def initialize_database():
             'exp_format_attendance_no': 'ندارد',
             'exp_format_exam': '⭕️ امتحان',
             'exp_format_conclusion': '⚠️ نتیجه گیری',
-            'exp_format_tags': '♊️ تگ‌ها',
             'exp_format_footer': """➖➖➖➖➖➖➖➖➖➖
 ❗️دوستانی که مایل به معرفی استاد هستن، می‌تونند با ما در ارتباط باشن تا استادشون رو معرفی کنیم و به بقیه کمک بشه برای انتخاب واحد بهتر.
 
@@ -89,6 +88,7 @@ def initialize_database():
 ثبت تجربه شما:
 🆔 @ShamsiOstadBankBot
 ➖➖➖➖➖➖➖➖➖➖""",
+            'exp_format_tags': '♊️ تگ‌ها',
             'status_pending': '⏳ در انتظار تایید',
             'status_approved': '✅ تایید شده',
             'status_rejected': '❌ رد شده',
@@ -218,14 +218,15 @@ def get_user_experiences(user_id, page=1, per_page=10):
             })
         return results, total_pages
 
+# START OF CHANGE - تابع add_item اصلاح شده است
 def add_item(model, **kwargs):
     with session_scope() as s:
         new_item = model(**kwargs)
         s.add(new_item)
-        s.flush()
-        item_id = new_item.id
-        s.expunge(new_item)
-        return s.query(model).get(item_id)
+        s.flush()  # ID را به شیء اختصاص می‌دهد
+        item_id = new_item.id  # ID را قبل از بسته شدن session ذخیره می‌کنیم
+        return s.query(model).get(item_id) # شیء کامل را بازمی‌گردانیم
+# END OF CHANGE
 
 def update_item(model, item_id, **kwargs):
     with session_scope() as s:
