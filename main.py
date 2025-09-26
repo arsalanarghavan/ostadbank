@@ -156,7 +156,6 @@ def format_experience(exp, md_version: int = 2, redacted=False) -> str:
             text_no_emoji = remove_emojis(normalized_name)
             name_with_underscores = re.sub(r'[\s\u200c-]+', '_', text_no_emoji)
             escaped_name = name_with_underscores.replace('_', '\\_')
-            logger.info(f"Tag Final Transformation: Original='{name}' -> WithUnderscores='{name_with_underscores}' -> Escaped='{escaped_name}'")
             return escaped_name
         except Exception as e:
             logger.error(f"Error in make_safe_tag for input '{name}': {e}")
@@ -258,11 +257,19 @@ async def my_experiences_page_callback(update: Update, context: ContextTypes.DEF
     experiences, total_pages = db.get_user_experiences(user_id, page=page)
     
     if not experiences:
-        await query.edit_message_text(db.get_text('my_experiences_empty'))
+        try:
+            await query.edit_message_text(db.get_text('my_experiences_empty'))
+        except BadRequest as e:
+            if "Message is not modified" not in str(e):
+                raise
         return
 
     keyboard = kb.my_experiences_keyboard(experiences, page, total_pages)
-    await query.edit_message_text(db.get_text('my_experiences_header'), reply_markup=keyboard)
+    try:
+        await query.edit_message_text(db.get_text('my_experiences_header'), reply_markup=keyboard)
+    except BadRequest as e:
+        if "Message is not modified" not in str(e):
+            raise
 
 async def experience_detail_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -274,15 +281,23 @@ async def experience_detail_callback(update: Update, context: ContextTypes.DEFAU
     
     exp = db.get_experience(exp_id)
     if not exp:
-        await query.edit_message_text("متاسفانه این تجربه پیدا نشد.")
+        try:
+            await query.edit_message_text("متاسفانه این تجربه پیدا نشد.")
+        except BadRequest as e:
+            if "Message is not modified" not in str(e):
+                raise
         return
         
     keyboard = kb.experience_detail_keyboard(exp_id, page)
-    await query.edit_message_text(
-        format_experience(exp, md_version=2),
-        parse_mode=constants.ParseMode.MARKDOWN_V2,
-        reply_markup=keyboard
-    )
+    try:
+        await query.edit_message_text(
+            format_experience(exp, md_version=2),
+            parse_mode=constants.ParseMode.MARKDOWN_V2,
+            reply_markup=keyboard
+        )
+    except BadRequest as e:
+        if "Message is not modified" not in str(e):
+            raise
 
 async def edit_experience_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -346,7 +361,11 @@ async def edit_experience_confirm_callback(update: Update, context: ContextTypes
     
     db.delete_item(Experience, exp_id)
     
-    await query.edit_message_text("تجربه قبلی حذف شد. لطفاً اطلاعات جدید را وارد کنید.")
+    try:
+        await query.edit_message_text("تجربه قبلی حذف شد. لطفاً اطلاعات جدید را وارد کنید.")
+    except BadRequest as e:
+        if "Message is not modified" not in str(e):
+            raise
     
     return await submission_start(query, context)
 
@@ -373,7 +392,11 @@ async def select_field(update: Update, context: ContextTypes.DEFAULT_TYPE) -> St
     field_id = int(query.data.split('_')[-1])
     context.user_data['experience']['field_id'] = field_id
     majors = db.get_all_items_by_parent(Major, 'field_id', field_id)
-    await query.edit_message_text(db.get_text('choose_major'), reply_markup=kb.dynamic_list_keyboard(majors, 'major'))
+    try:
+        await query.edit_message_text(db.get_text('choose_major'), reply_markup=kb.dynamic_list_keyboard(majors, 'major'))
+    except BadRequest as e:
+        if "Message is not modified" not in str(e):
+            logger.warning("Caught 'Message is not modified' error in select_field")
     return States.SELECTING_MAJOR
 
 async def select_major(update: Update, context: ContextTypes.DEFAULT_TYPE) -> States:
@@ -382,7 +405,11 @@ async def select_major(update: Update, context: ContextTypes.DEFAULT_TYPE) -> St
     major_id = int(query.data.split('_')[-1])
     context.user_data['experience']['major_id'] = major_id
     courses = db.get_all_items_by_parent(Course, 'major_id', major_id)
-    await query.edit_message_text(db.get_text('choose_course'), reply_markup=kb.dynamic_list_keyboard(courses, 'course'))
+    try:
+        await query.edit_message_text(db.get_text('choose_course'), reply_markup=kb.dynamic_list_keyboard(courses, 'course'))
+    except BadRequest as e:
+        if "Message is not modified" not in str(e):
+            logger.warning("Caught 'Message is not modified' error in select_major")
     return States.SELECTING_COURSE
 
 async def select_course(update: Update, context: ContextTypes.DEFAULT_TYPE) -> States:
@@ -390,7 +417,11 @@ async def select_course(update: Update, context: ContextTypes.DEFAULT_TYPE) -> S
     await query.answer()
     context.user_data['experience']['course_id'] = int(query.data.split('_')[-1])
     professors, _ = db.get_paginated_list(Professor, per_page=100)
-    await query.edit_message_text(db.get_text('choose_professor'), reply_markup=kb.dynamic_list_keyboard(professors, 'professor', has_add_new=True))
+    try:
+        await query.edit_message_text(db.get_text('choose_professor'), reply_markup=kb.dynamic_list_keyboard(professors, 'professor', has_add_new=True))
+    except BadRequest as e:
+        if "Message is not modified" not in str(e):
+            logger.warning("Caught 'Message is not modified' error in select_course")
     return States.SELECTING_PROFESSOR
 
 async def select_professor(update: Update, context: ContextTypes.DEFAULT_TYPE) -> States:
@@ -398,13 +429,21 @@ async def select_professor(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     await query.answer()
     professor_id = int(query.data.split('_')[-1])
     context.user_data['experience']['professor_id'] = professor_id
-    await query.edit_message_text(db.get_text('ask_teaching_style'))
+    try:
+        await query.edit_message_text(db.get_text('ask_teaching_style'))
+    except BadRequest as e:
+        if "Message is not modified" not in str(e):
+            logger.warning("Caught 'Message is not modified' error in select_professor")
     return States.GETTING_TEACHING
 
 async def add_new_professor_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> States:
     query = update.callback_query
     await query.answer()
-    await query.edit_message_text(db.get_text('add_new_professor_prompt'))
+    try:
+        await query.edit_message_text(db.get_text('add_new_professor_prompt'))
+    except BadRequest as e:
+        if "Message is not modified" not in str(e):
+            logger.warning("Caught 'Message is not modified' error in add_new_professor_start")
     return States.ADDING_PROFESSOR
 
 async def add_new_professor_receive_name(update: Update, context: ContextTypes.DEFAULT_TYPE) -> States:
@@ -434,7 +473,11 @@ async def get_teaching_rating(update: Update, context: ContextTypes.DEFAULT_TYPE
     await query.answer()
     rating_name = query.data.split('_')[1]
     context.user_data['experience']['teaching_rating'] = TeachingRating[rating_name]
-    await query.edit_message_text(db.get_text('ask_notes'))
+    try:
+        await query.edit_message_text(db.get_text('ask_notes'))
+    except BadRequest as e:
+        if "Message is not modified" not in str(e):
+            logger.warning("Caught 'Message is not modified' error in get_teaching_rating")
     return States.GETTING_NOTES
 
 async def get_notes(update: Update, context: ContextTypes.DEFAULT_TYPE) -> States:
@@ -447,7 +490,11 @@ async def get_attendance_choice(update: Update, context: ContextTypes.DEFAULT_TY
     query = update.callback_query
     await query.answer()
     context.user_data['experience']['attendance_required'] = (query.data == 'attendance_yes')
-    await query.edit_message_text(db.get_text('ask_attendance_details'))
+    try:
+        await query.edit_message_text(db.get_text('ask_attendance_details'))
+    except BadRequest as e:
+        if "Message is not modified" not in str(e):
+            logger.warning("Caught 'Message is not modified' error in get_attendance_choice")
     return States.GETTING_ATTENDANCE_DETAILS
 
 async def get_attendance_details(update: Update, context: ContextTypes.DEFAULT_TYPE) -> States:
@@ -461,7 +508,11 @@ async def get_exam_difficulty(update: Update, context: ContextTypes.DEFAULT_TYPE
     await query.answer()
     difficulty_name = query.data.split('_')[1]
     context.user_data['experience']['exam_difficulty'] = ExamDifficulty[difficulty_name]
-    await query.edit_message_text(db.get_text('ask_conclusion'))
+    try:
+        await query.edit_message_text(db.get_text('ask_conclusion'))
+    except BadRequest as e:
+        if "Message is not modified" not in str(e):
+            logger.warning("Caught 'Message is not modified' error in get_exam_difficulty")
     return States.GETTING_CONCLUSION
 
 async def get_conclusion(update: Update, context: ContextTypes.DEFAULT_TYPE) -> States:
@@ -504,18 +555,28 @@ async def get_overall_rating_and_finish(update: Update, context: ContextTypes.DE
         if first_admin_message:
             new_exp_obj.admin_message_id = first_admin_message.message_id
             new_exp_obj.admin_chat_id = first_admin_message.chat_id
-
-    await query.edit_message_text(db.get_text('submission_success'), reply_markup=kb.main_menu())
+    
+    await query.message.delete()
+    await context.bot.send_message(
+        chat_id=update.effective_chat.id,
+        text=db.get_text('submission_success'), 
+        reply_markup=kb.main_menu()
+    )
     context.user_data.clear()
     return ConversationHandler.END
 
 async def cancel_submission(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     query = update.callback_query
-    if query:
-        await query.answer()
-        await query.edit_message_text(db.get_text('operation_cancelled'))
-    else:
-        await update.message.reply_text(db.get_text('operation_cancelled'))
+    try:
+        if query:
+            await query.answer()
+            await query.edit_message_text(db.get_text('operation_cancelled'))
+        else:
+            await update.message.reply_text(db.get_text('operation_cancelled'))
+    except BadRequest as e:
+        if "Message is not modified" not in str(e):
+            logger.warning("Caught 'Message is not modified' error in cancel_submission")
+
     context.user_data.clear()
     return ConversationHandler.END
 
@@ -583,10 +644,14 @@ async def admin_pending_reviews_callback(update: Update, context: ContextTypes.D
     experiences, total_pages = db.get_experiences_by_status(ExperienceStatus.PENDING, page=page)
     
     if not experiences:
-        await query.edit_message_text(
-            db.get_text('admin_no_pending_experiences'),
-            reply_markup=kb.admin_experience_menu()
-        )
+        try:
+            await query.edit_message_text(
+                db.get_text('admin_no_pending_experiences'),
+                reply_markup=kb.admin_experience_menu()
+            )
+        except BadRequest as e:
+            if "Message is not modified" not in str(e):
+                raise
         return
 
     keyboard = kb.admin_pending_experiences_keyboard(experiences, page, total_pages)
