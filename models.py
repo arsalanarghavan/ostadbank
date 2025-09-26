@@ -30,11 +30,31 @@ class ExperienceData:
     professor_name: str
     course_name: str
     channel_message_id: Optional[int] = None
+    # --- NEW FIELDS START ---
+    teaching_rating: Optional[str] = None
+    exam_difficulty: Optional[str] = None
+    overall_rating: Optional[int] = None
+    # --- NEW FIELDS END ---
+
 
 class ExperienceStatus(str, enum.Enum):
     PENDING = "pending"
     APPROVED = "approved"
     REJECTED = "rejected"
+
+# --- NEW ENUMS FOR RATINGS ---
+class TeachingRating(str, enum.Enum):
+    EXCELLENT = "عالی"
+    GOOD = "خوب"
+    AVERAGE = "متوسط"
+    POOR = "ضعیف"
+
+class ExamDifficulty(str, enum.Enum):
+    EASY = "آسان"
+    MEDIUM = "متوسط"
+    HARD = "سخت"
+# --- END NEW ENUMS ---
+
 
 class User(Base):
     __tablename__ = 'users'
@@ -111,14 +131,21 @@ class Experience(Base):
     status = Column(EnumType(ExperienceStatus), default=ExperienceStatus.PENDING, nullable=False)
     admin_message_id = Column(BigInteger, nullable=True)
     admin_chat_id = Column(BigInteger, nullable=True)
-    channel_message_id = Column(BigInteger, nullable=True) # New field
+    channel_message_id = Column(BigInteger, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    # --- NEW RATING COLUMNS ---
+    teaching_rating = Column(EnumType(TeachingRating), nullable=True)
+    exam_difficulty = Column(EnumType(ExamDifficulty), nullable=True)
+    overall_rating = Column(Integer, nullable=True) # From 1 to 5
+    # --- END NEW RATING COLUMNS ---
 
     field = relationship("Field")
     major = relationship("Major")
     professor = relationship("Professor")
     course = relationship("Course")
+
 
 class RequiredChannel(Base):
     __tablename__ = 'required_channels'

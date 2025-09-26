@@ -21,7 +21,8 @@ import config
 import database as db
 import keyboards as kb
 from models import (Field, Major, Professor, Course, Experience, BotText, Admin,
-                    ExperienceStatus, RequiredChannel, Setting, User, ExperienceData)
+                    ExperienceStatus, RequiredChannel, Setting, User, ExperienceData,
+                    TeachingRating, ExamDifficulty) # Added new models
 from constants import (
     States,
     FIELD_SELECT, MAJOR_SELECT, COURSE_SELECT, PROFESSOR_SELECT, PROFESSOR_ADD_NEW,
@@ -111,10 +112,7 @@ async def check_channel_membership(update: Update, context: ContextTypes.DEFAULT
     for channel in required_channels:
         try:
             member = await context.bot.get_chat_member(chat_id=channel['channel_id'], user_id=user_id)
-            # --- START OF FIX ---
-            # Changed ChatMember.CREATOR to ChatMember.OWNER for compatibility with PTB v20+
             if member.status not in [ChatMember.MEMBER, ChatMember.ADMINISTRATOR, ChatMember.OWNER]:
-            # --- END OF FIX ---
                 is_member_of_all = False
                 break
         except TelegramError as e:
@@ -131,6 +129,8 @@ async def check_channel_membership(update: Update, context: ContextTypes.DEFAULT
 
 def format_experience(exp, md_version: int = 2, redacted=False) -> str:
     def def_md(text):
+        if text is None:
+            return ""
         return escape_markdown(str(text), version=md_version)
 
     def remove_emojis(text):
@@ -164,10 +164,22 @@ def format_experience(exp, md_version: int = 2, redacted=False) -> str:
 
     is_dataclass = isinstance(exp, ExperienceData)
 
-    field_name = def_md(exp.field_name if is_dataclass else exp.field.name)
-    major_name = def_md(exp.major_name if is_dataclass else exp.major.name)
-    professor_name = def_md(exp.professor_name if is_dataclass else exp.professor.name)
-    course_name = def_md(exp.course_name if is_dataclass else exp.course.name)
+    field_name = def_md(exp.field_name if is_dataclass else (exp.field.name if exp.field else ""))
+    major_name = def_md(exp.major_name if is_dataclass else (exp.major.name if exp.major else ""))
+    professor_name = def_md(exp.professor_name if is_dataclass else (exp.professor.name if exp.professor else ""))
+    course_name = def_md(exp.course_name if is_dataclass else (exp.course.name if exp.course else ""))
+
+    # --- RATING FORMATTING (NEW) ---
+    teaching_rating_val = exp.teaching_rating if is_dataclass else (exp.teaching_rating.value if exp.teaching_rating else 'ثبت نشده')
+    teaching_rating_str = f"*{def_md(db.get_text('exp_format_teaching_rating'))}*: {def_md(teaching_rating_val)}\n\n"
+    
+    exam_difficulty_val = exp.exam_difficulty if is_dataclass else (exp.exam_difficulty.value if exp.exam_difficulty else 'ثبت نشده')
+    exam_difficulty_str = f"*{def_md(db.get_text('exp_format_exam_difficulty'))}*: {def_md(exam_difficulty_val)}\n\n"
+    
+    overall_rating_stars = ("⭐️" * exp.overall_rating) if exp.overall_rating else "بدون امتیاز"
+    overall_rating_str = f"*{def_md(db.get_text('exp_format_overall_rating'))}*: {overall_rating_stars}\n\n"
+    # --- END RATING FORMATTING ---
+
 
     if redacted:
         redacted_text = def_md(db.get_text('content_deleted_by_request'))
@@ -180,24 +192,27 @@ def format_experience(exp, md_version: int = 2, redacted=False) -> str:
         exam = def_md(exp.exam)
         conclusion = def_md(exp.conclusion)
 
-    tags = (f"\\#{make_safe_tag(exp.field_name if is_dataclass else exp.field.name)} "
-            f"\\#{make_safe_tag(exp.major_name if is_dataclass else exp.major.name)} "
-            f"\\#{make_safe_tag(exp.professor_name if is_dataclass else exp.professor.name)} "
-            f"\\#{make_safe_tag(exp.course_name if is_dataclass else exp.course.name)}")
+    tags = (f"\\#{make_safe_tag(exp.field_name if is_dataclass else (exp.field.name if exp.field else ''))} "
+            f"\\#{make_safe_tag(exp.major_name if is_dataclass else (exp.major.name if exp.major else ''))} "
+            f"\\#{make_safe_tag(exp.professor_name if is_dataclass else (exp.professor.name if exp.professor else ''))} "
+            f"\\#{make_safe_tag(exp.course_name if is_dataclass else (exp.course.name if exp.course else ''))}")
             
     attendance_status = db.get_text('exp_format_attendance_yes') if exp.attendance_required else db.get_text('exp_format_attendance_no')
     
-    return (f"*{db.get_text('exp_format_field')}*: {field_name} \\({major_name}\\)\n\n"
-            f"*{db.get_text('exp_format_professor')}*: {professor_name}\n\n"
-            f"*{db.get_text('exp_format_course')}*: {course_name}\n\n"
-            f"*{db.get_text('exp_format_teaching')}*: {teaching_style}\n\n"
-            f"*{db.get_text('exp_format_notes')}*: {notes}\n\n"
-            f"*{db.get_text('exp_format_project')}*: {project}\n\n"
-            f"*{db.get_text('exp_format_attendance')}*: {attendance_status} \\- {attendance_details}\n\n"
-            f"*{db.get_text('exp_format_exam')}*: {exam}\n\n"
-            f"*{db.get_text('exp_format_conclusion')}*: {conclusion}\n\n"
+    return (f"*{def_md(db.get_text('exp_format_field'))}*: {field_name} \\({major_name}\\)\n\n"
+            f"*{def_md(db.get_text('exp_format_professor'))}*: {professor_name}\n\n"
+            f"*{def_md(db.get_text('exp_format_course'))}*: {course_name}\n\n"
+            f"{teaching_rating_str}"
+            f"*{def_md(db.get_text('exp_format_teaching'))}*: {teaching_style}\n\n"
+            f"*{def_md(db.get_text('exp_format_notes'))}*: {notes}\n\n"
+            f"*{def_md(db.get_text('exp_format_project'))}*: {project}\n\n"
+            f"*{def_md(db.get_text('exp_format_attendance'))}*: {def_md(attendance_status)} \\- {attendance_details}\n\n"
+            f"{exam_difficulty_str}"
+            f"*{def_md(db.get_text('exp_format_exam'))}*: {exam}\n\n"
+            f"*{def_md(db.get_text('exp_format_conclusion'))}*: {conclusion}\n\n"
+            f"{overall_rating_str}"
             f"{def_md(db.get_text('exp_format_footer'))}\n\n"
-            f"*{db.get_text('exp_format_tags')}*: {tags}")
+            f"*{def_md(db.get_text('exp_format_tags'))}*: {tags}")
 
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     db.add_user(update.effective_user.id, update.effective_user.first_name)
@@ -412,7 +427,15 @@ async def get_text_input(update: Update, context: ContextTypes.DEFAULT_TYPE, fie
     return next_state
 
 async def get_teaching(update: Update, context: ContextTypes.DEFAULT_TYPE) -> States:
-    return await get_text_input(update, context, 'teaching_style', States.GETTING_NOTES, 'ask_notes')
+    return await get_text_input(update, context, 'teaching_style', States.GETTING_TEACHING_RATING, 'ask_teaching_rating', kb.teaching_rating_keyboard())
+
+async def get_teaching_rating(update: Update, context: ContextTypes.DEFAULT_TYPE) -> States:
+    query = update.callback_query
+    await query.answer()
+    rating_name = query.data.split('_')[1]
+    context.user_data['experience']['teaching_rating'] = TeachingRating[rating_name]
+    await query.edit_message_text(db.get_text('ask_notes'))
+    return States.GETTING_NOTES
 
 async def get_notes(update: Update, context: ContextTypes.DEFAULT_TYPE) -> States:
     return await get_text_input(update, context, 'notes', States.GETTING_PROJECT, 'ask_project')
@@ -431,15 +454,26 @@ async def get_attendance_details(update: Update, context: ContextTypes.DEFAULT_T
     return await get_text_input(update, context, 'attendance_details', States.GETTING_EXAM, 'ask_exam')
 
 async def get_exam(update: Update, context: ContextTypes.DEFAULT_TYPE) -> States:
-    return await get_text_input(update, context, 'exam', States.GETTING_CONCLUSION, 'ask_conclusion')
+    return await get_text_input(update, context, 'exam', States.GETTING_EXAM_DIFFICULTY, 'ask_exam_difficulty', kb.exam_difficulty_keyboard())
 
-async def get_conclusion_and_finish(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    user_input = update.message.text
-    if len(user_input) > 1000:
-        await update.message.reply_text("متن شما بیش از حد طولانی است. لطفا دوباره تلاش کنید:")
-        return States.GETTING_CONCLUSION
+async def get_exam_difficulty(update: Update, context: ContextTypes.DEFAULT_TYPE) -> States:
+    query = update.callback_query
+    await query.answer()
+    difficulty_name = query.data.split('_')[1]
+    context.user_data['experience']['exam_difficulty'] = ExamDifficulty[difficulty_name]
+    await query.edit_message_text(db.get_text('ask_conclusion'))
+    return States.GETTING_CONCLUSION
+
+async def get_conclusion(update: Update, context: ContextTypes.DEFAULT_TYPE) -> States:
+    return await get_text_input(update, context, 'conclusion', States.GETTING_OVERALL_RATING, 'ask_overall_rating', kb.overall_rating_keyboard())
+
+async def get_overall_rating_and_finish(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    query = update.callback_query
+    await query.answer()
     
-    context.user_data['experience']['conclusion'] = user_input
+    rating = int(query.data.split('_')[1])
+    context.user_data['experience']['overall_rating'] = rating
+    
     exp_data = context.user_data['experience']
     user = update.effective_user
     exp_data['user_id'] = user.id
@@ -448,10 +482,10 @@ async def get_conclusion_and_finish(update: Update, context: ContextTypes.DEFAUL
         new_exp_obj = Experience(**exp_data)
         s.add(new_exp_obj)
         s.flush()  
-        s.refresh(new_exp_obj, attribute_names=['field', 'major', 'professor', 'course'])
+        s.refresh(new_exp_obj, attribute_names=['field', 'major', 'professor', 'course', 'teaching_rating', 'exam_difficulty'])
         
         notification_text = escape_markdown(db.get_text('admin_new_experience_notification', exp_id=new_exp_obj.id), version=2)
-        admin_message_text = notification_text + format_experience(new_exp_obj)
+        admin_message_text = notification_text + format_experience(new_exp_obj, md_version=2)
         
         first_admin_message = None
         admins = s.query(Admin).all()
@@ -471,7 +505,7 @@ async def get_conclusion_and_finish(update: Update, context: ContextTypes.DEFAUL
             new_exp_obj.admin_message_id = first_admin_message.message_id
             new_exp_obj.admin_chat_id = first_admin_message.chat_id
 
-    await update.message.reply_text(db.get_text('submission_success'), reply_markup=kb.main_menu())
+    await query.edit_message_text(db.get_text('submission_success'), reply_markup=kb.main_menu())
     context.user_data.clear()
     return ConversationHandler.END
 
@@ -600,7 +634,7 @@ async def experience_approval_handler(update: Update, context: ContextTypes.DEFA
         if action == "approve":
             exp.status = ExperienceStatus.APPROVED
             sent_message = await context.bot.send_message(
-                chat_id=config.CHANNEL_ID, text=format_experience(exp), parse_mode=constants.ParseMode.MARKDOWN_V2
+                chat_id=config.CHANNEL_ID, text=format_experience(exp, md_version=2), parse_mode=constants.ParseMode.MARKDOWN_V2
             )
             exp.channel_message_id = sent_message.message_id
             await query.edit_message_text(db.get_text('admin_approval_success', exp_id=exp_id))
@@ -649,7 +683,6 @@ async def delete_experience_content_callback(update: Update, context: ContextTyp
         )
         await query.answer(db.get_text('admin_content_deleted_success'), show_alert=True)
     except TelegramError as e:
-        # Gracefully handle the "Message is not modified" error
         if 'message is not modified' in str(e).lower():
             await query.answer("محتوا قبلاً حذف شده است.", show_alert=True)
         else:
@@ -677,8 +710,6 @@ async def broadcast_receive_message(update: Update, context: ContextTypes.DEFAUL
         except Exception as e:
             logger.error(f"Failed to send broadcast to {user['user_id']}: {e}")
             failed_count += 1
-
-        # Add a small delay to avoid hitting rate limits
         await asyncio.sleep(0.5)
 
     await update.message.reply_text(f"پیام به {sent_count} کاربر ارسال شد. {failed_count} ناموفق بود.")
@@ -1017,12 +1048,15 @@ submission_handler = ConversationHandler(
         ],
         States.ADDING_PROFESSOR: [MessageHandler(filters.TEXT & ~filters.COMMAND, add_new_professor_receive_name)],
         States.GETTING_TEACHING: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_teaching)],
+        States.GETTING_TEACHING_RATING: [CallbackQueryHandler(get_teaching_rating, pattern=r"^teaching_")],
         States.GETTING_NOTES: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_notes)],
         States.GETTING_PROJECT: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_project)],
         States.GETTING_ATTENDANCE_CHOICE: [CallbackQueryHandler(get_attendance_choice, pattern=ATTENDANCE_CHOICE)],
         States.GETTING_ATTENDANCE_DETAILS: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_attendance_details)],
         States.GETTING_EXAM: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_exam)],
-        States.GETTING_CONCLUSION: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_conclusion_and_finish)],
+        States.GETTING_EXAM_DIFFICULTY: [CallbackQueryHandler(get_exam_difficulty, pattern=r"^exam_")],
+        States.GETTING_CONCLUSION: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_conclusion)],
+        States.GETTING_OVERALL_RATING: [CallbackQueryHandler(get_overall_rating_and_finish, pattern=r"^rating_")],
     },
     fallbacks=[
         CallbackQueryHandler(cancel_submission, pattern=CANCEL_SUBMISSION),

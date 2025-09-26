@@ -16,12 +16,15 @@ class States(Enum):
     SELECTING_PROFESSOR = auto()
     ADDING_PROFESSOR = auto()
     GETTING_TEACHING = auto()
+    GETTING_TEACHING_RATING = auto()  # New State
     GETTING_NOTES = auto()
     GETTING_PROJECT = auto()
     GETTING_ATTENDANCE_CHOICE = auto()
     GETTING_ATTENDANCE_DETAILS = auto()
     GETTING_EXAM = auto()
+    GETTING_EXAM_DIFFICULTY = auto()  # New State
     GETTING_CONCLUSION = auto()
+    GETTING_OVERALL_RATING = auto()  # New State
     
     # Admin Panel Flow
     GETTING_NEW_NAME = auto()

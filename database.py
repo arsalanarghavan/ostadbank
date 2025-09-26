@@ -48,12 +48,15 @@ def initialize_database():
             'choose_professor': '👨🏻‍🏫 لطفا **استاد** این درس را انتخاب کنید.',
             'add_new_professor_prompt': 'لطفا نام کامل استاد جدید را وارد کنید:',
             'ask_teaching_style': '✏️ لطفا درباره **سبک تدریس** استاد توضیح دهید (حداکثر ۱۰۰۰ کاراکتر).',
+            'ask_teaching_rating': 'چگونه **سبک تدریس** ایشان را ارزیابی می‌کنید؟',
             'ask_notes': '📚 آیا استاد **جزوه** خاصی دارند یا منبع خاصی معرفی می‌کنند؟ (حداکثر ۱۰۰۰ کاراکتر)',
             'ask_project': '💻 آیا این درس **پروژه** دارد؟ در صورت وجود، درباره آن توضیح دهید (حداکثر ۱۰۰۰ کاراکتر).',
             'ask_attendance_choice': '🕒 آیا استاد بر روی **حضور و غیاب** حساس هستند؟',
             'ask_attendance_details': 'لطفا جزئیات **حضور و غیاب** را بنویسید (حداکثر ۱۰۰۰ کاراکتر).',
             'ask_exam': '⭕️ درباره **امتحان** پایان‌ترم توضیح دهید (حداکثر ۱۰۰۰ کاراکتر).',
+            'ask_exam_difficulty': '**سطح سختی امتحان** ایشان چطور بود؟',
             'ask_conclusion': '⚠️ و در آخر، به عنوان **نتیجه‌گیری**، چه توصیه‌ای برای دانشجویان دارید؟ (حداکثر ۱۰۰۰ کاراکتر)',
+            'ask_overall_rating': 'در نهایت، از ۱ تا ۵ ستاره، چه **امتیازی** به این استاد می‌دهید؟',
             'submission_success': '👌 تجربه شما با موفقیت ثبت و برای بررسی به ادمین‌ها ارسال شد. متشکریم!',
             'submission_cancel': '❌ فرآیند ثبت تجربه لغو شد.',
             'admin_panel_welcome': '🔐 به پنل مدیریت خوش آمدید.',
@@ -71,14 +74,17 @@ def initialize_database():
             'exp_format_field': '🔖 رشته',
             'exp_format_professor': '👨🏻‍🏫 استاد',
             'exp_format_course': '📝 درس',
+            'exp_format_teaching_rating': '📊 ارزیابی تدریس',
             'exp_format_teaching': '✏️ نوع تدریس',
             'exp_format_notes': '📚 جزوه',
             'exp_format_project': '💻 پروژه',
             'exp_format_attendance': '❌ حضور و غیاب',
             'exp_format_attendance_yes': 'دارد',
             'exp_format_attendance_no': 'ندارد',
+            'exp_format_exam_difficulty': '📈 سطح سختی امتحان',
             'exp_format_exam': '⭕️ امتحان',
             'exp_format_conclusion': '⚠️ نتیجه گیری',
+            'exp_format_overall_rating': '⭐️ امتیاز نهایی',
             'exp_format_footer': """➖➖➖➖➖➖➖➖➖➖
 ❗️دوستانی که مایل به معرفی استاد هستن، می‌تونند با ما در ارتباط باشن تا استادشون رو معرفی کنیم و به بقیه کمک بشه برای انتخاب واحد بهتر.
 
@@ -339,7 +345,10 @@ def get_experience(exp_id) -> ExperienceData | None:
             major_name=exp.major.name if exp.major else "",
             professor_name=exp.professor.name if exp.professor else "",
             course_name=exp.course.name if exp.course else "",
-            channel_message_id=exp.channel_message_id
+            channel_message_id=exp.channel_message_id,
+            teaching_rating=exp.teaching_rating.value if exp.teaching_rating else None,
+            exam_difficulty=exp.exam_difficulty.value if exp.exam_difficulty else None,
+            overall_rating=exp.overall_rating
         )
 
 def get_user_experiences(user_id, page=1, per_page=10):

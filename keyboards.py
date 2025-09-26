@@ -2,7 +2,7 @@
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup
 import database as db
-from models import RequiredChannel, ExperienceStatus
+from models import RequiredChannel, ExperienceStatus, TeachingRating, ExamDifficulty
 
 def main_menu():
     """Returns the main menu keyboard for regular users."""
@@ -275,3 +275,48 @@ def admin_manage_channels_keyboard():
     
     keyboard.append([InlineKeyboardButton(db.get_text('btn_back_to_panel'), callback_data="admin_main_panel_inline")])
     return InlineKeyboardMarkup(keyboard)
+
+# --- NEW KEYBOARDS FOR RATINGS ---
+
+def teaching_rating_keyboard():
+    """Keyboard for rating the teaching style."""
+    keyboard = [
+        [
+            InlineKeyboardButton(TeachingRating.EXCELLENT.value, callback_data=f"teaching_{TeachingRating.EXCELLENT.name}"),
+            InlineKeyboardButton(TeachingRating.GOOD.value, callback_data=f"teaching_{TeachingRating.GOOD.name}"),
+        ],
+        [
+            InlineKeyboardButton(TeachingRating.AVERAGE.value, callback_data=f"teaching_{TeachingRating.AVERAGE.name}"),
+            InlineKeyboardButton(TeachingRating.POOR.value, callback_data=f"teaching_{TeachingRating.POOR.name}"),
+        ],
+        [InlineKeyboardButton(db.get_text('btn_cancel'), callback_data="cancel_submission")]
+    ]
+    return InlineKeyboardMarkup(keyboard)
+
+def exam_difficulty_keyboard():
+    """Keyboard for rating the exam difficulty."""
+    keyboard = [
+        [
+            InlineKeyboardButton(ExamDifficulty.EASY.value, callback_data=f"exam_{ExamDifficulty.EASY.name}"),
+            InlineKeyboardButton(ExamDifficulty.MEDIUM.value, callback_data=f"exam_{ExamDifficulty.MEDIUM.name}"),
+            InlineKeyboardButton(ExamDifficulty.HARD.value, callback_data=f"exam_{ExamDifficulty.HARD.name}"),
+        ],
+        [InlineKeyboardButton(db.get_text('btn_cancel'), callback_data="cancel_submission")]
+    ]
+    return InlineKeyboardMarkup(keyboard)
+
+def overall_rating_keyboard():
+    """Keyboard for the final 1-5 star rating."""
+    keyboard = [
+        [
+            InlineKeyboardButton("⭐️ 1", callback_data="rating_1"),
+            InlineKeyboardButton("⭐️ 2", callback_data="rating_2"),
+            InlineKeyboardButton("⭐️ 3", callback_data="rating_3"),
+            InlineKeyboardButton("⭐️ 4", callback_data="rating_4"),
+            InlineKeyboardButton("⭐️ 5", callback_data="rating_5"),
+        ],
+        [InlineKeyboardButton(db.get_text('btn_cancel'), callback_data="cancel_submission")]
+    ]
+    return InlineKeyboardMarkup(keyboard)
+
+# --- END OF NEW KEYBOARDS ---
