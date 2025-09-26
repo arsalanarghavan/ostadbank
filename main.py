@@ -111,7 +111,10 @@ async def check_channel_membership(update: Update, context: ContextTypes.DEFAULT
     for channel in required_channels:
         try:
             member = await context.bot.get_chat_member(chat_id=channel['channel_id'], user_id=user_id)
-            if member.status not in [ChatMember.MEMBER, ChatMember.ADMINISTRATOR, ChatMember.CREATOR]:
+            # --- START OF FIX ---
+            # Changed ChatMember.CREATOR to ChatMember.OWNER for compatibility with PTB v20+
+            if member.status not in [ChatMember.MEMBER, ChatMember.ADMINISTRATOR, ChatMember.OWNER]:
+            # --- END OF FIX ---
                 is_member_of_all = False
                 break
         except TelegramError as e:
@@ -148,26 +151,16 @@ def format_experience(exp, md_version: int = 2, redacted=False) -> str:
         return emoji_pattern.sub(r'', text).strip()
 
     def make_safe_tag(name: str) -> str:
-        """
-        Final fix: This function now also escapes the underscore character for MarkdownV2.
-        """
         try:
             normalized_name = unicodedata.normalize('NFC', name)
             text_no_emoji = remove_emojis(normalized_name)
-            
-            # Replace separators with a single underscore
             name_with_underscores = re.sub(r'[\s\u200c-]+', '_', text_no_emoji)
-            
-            # **THE CRITICAL FIX IS HERE:** Escape the underscores for MarkdownV2
             escaped_name = name_with_underscores.replace('_', '\\_')
-            
             logger.info(f"Tag Final Transformation: Original='{name}' -> WithUnderscores='{name_with_underscores}' -> Escaped='{escaped_name}'")
-            
             return escaped_name
         except Exception as e:
             logger.error(f"Error in make_safe_tag for input '{name}': {e}")
             return name.replace(' ', '\\_').replace('\u200c', '\\_')
-
 
     is_dataclass = isinstance(exp, ExperienceData)
 
