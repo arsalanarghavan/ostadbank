@@ -10,6 +10,15 @@ def main_menu():
         [db.get_text('btn_submit_experience'), db.get_text('btn_search')],
         [db.get_text('btn_my_experiences'), db.get_text('btn_rules')]
     ], resize_keyboard=True)
+    
+def yes_no_keyboard(prefix: str):
+    """Creates a generic Yes/No keyboard with a given prefix."""
+    return InlineKeyboardMarkup([[
+        InlineKeyboardButton(db.get_text('btn_yes'), callback_data=f"{prefix}_yes"),
+        InlineKeyboardButton(db.get_text('btn_no'), callback_data=f"{prefix}_no")
+    ], [InlineKeyboardButton(db.get_text('btn_cancel'), callback_data="cancel_submission")]])
+    
+# ... (تمام کیبوردهای دیگر بدون تغییر باقی می‌مانند) ...
 
 def admin_panel_main():
     """Returns the main keyboard for the admin panel as a ReplyKeyboard."""
@@ -207,12 +216,6 @@ def dynamic_list_keyboard(items, prefix, has_add_new=False):
     keyboard.append([InlineKeyboardButton(db.get_text('btn_cancel'), callback_data="cancel_submission")])
     return InlineKeyboardMarkup(keyboard)
 
-def attendance_keyboard():
-    return InlineKeyboardMarkup([[
-        InlineKeyboardButton(db.get_text('btn_attendance_yes'), callback_data="attendance_yes"),
-        InlineKeyboardButton(db.get_text('btn_attendance_no'), callback_data="attendance_no")
-    ], [InlineKeyboardButton(db.get_text('btn_cancel'), callback_data="cancel_submission")]])
-
 def admin_approval_keyboard(experience_id, user, from_list_page=None, from_search=False):
     telegram_user_id = getattr(user, 'user_id', getattr(user, 'id', None))
     
@@ -232,7 +235,7 @@ def admin_approval_keyboard(experience_id, user, from_list_page=None, from_searc
         keyboard.insert(1, [InlineKeyboardButton(db.get_text('btn_delete_content_by_request'), callback_data=f"exp_delete_content_{experience_id}")])
 
     if hasattr(user, 'username') and user.username:
-        keyboard.append([InlineKeyboardButton(f"@{user.username}", url=f"https://t.me/{user.username}")])
+        keyboard.append([InlineKeyboardButton(f"@{user.username}", url=f"https.t.me/{user.username}")])
     
     if from_list_page:
         back_callback = f"admin_search_page_{from_list_page}" if from_search else f"admin_pending_exps_{from_list_page}"
@@ -276,8 +279,6 @@ def admin_manage_channels_keyboard():
     keyboard.append([InlineKeyboardButton(db.get_text('btn_back_to_panel'), callback_data="admin_main_panel_inline")])
     return InlineKeyboardMarkup(keyboard)
 
-# --- NEW KEYBOARDS FOR RATINGS ---
-
 def teaching_rating_keyboard():
     """Keyboard for rating the teaching style."""
     keyboard = [
@@ -318,5 +319,3 @@ def overall_rating_keyboard():
         [InlineKeyboardButton(db.get_text('btn_cancel'), callback_data="cancel_submission")]
     ]
     return InlineKeyboardMarkup(keyboard)
-
-# --- END OF NEW KEYBOARDS ---

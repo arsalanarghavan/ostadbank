@@ -30,10 +30,13 @@ class ExperienceData:
     professor_name: str
     course_name: str
     channel_message_id: Optional[int] = None
-    # --- NEW FIELDS START ---
     teaching_rating: Optional[str] = None
     exam_difficulty: Optional[str] = None
     overall_rating: Optional[int] = None
+    # --- NEW FIELDS START ---
+    has_notes: Optional[bool] = None
+    has_project: Optional[bool] = None
+    has_exam: Optional[bool] = None
     # --- NEW FIELDS END ---
 
 
@@ -42,7 +45,6 @@ class ExperienceStatus(str, enum.Enum):
     APPROVED = "approved"
     REJECTED = "rejected"
 
-# --- NEW ENUMS FOR RATINGS ---
 class TeachingRating(str, enum.Enum):
     EXCELLENT = "عالی"
     GOOD = "خوب"
@@ -53,7 +55,6 @@ class ExamDifficulty(str, enum.Enum):
     EASY = "آسان"
     MEDIUM = "متوسط"
     HARD = "سخت"
-# --- END NEW ENUMS ---
 
 
 class User(Base):
@@ -121,12 +122,12 @@ class Experience(Base):
     major_id = Column(Integer, ForeignKey('majors.id'))
     professor_id = Column(Integer, ForeignKey('professors.id'))
     course_id = Column(Integer, ForeignKey('courses.id'))
-    teaching_style = Column(Text)
-    notes = Column(Text)
-    project = Column(Text)
+    teaching_style = Column(Text, nullable=True)
+    notes = Column(Text, nullable=True)
+    project = Column(Text, nullable=True)
     attendance_required = Column(Boolean)
-    attendance_details = Column(Text)
-    exam = Column(Text)
+    attendance_details = Column(Text, nullable=True)
+    exam = Column(Text, nullable=True)
     conclusion = Column(Text)
     status = Column(EnumType(ExperienceStatus), default=ExperienceStatus.PENDING, nullable=False)
     admin_message_id = Column(BigInteger, nullable=True)
@@ -135,11 +136,15 @@ class Experience(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
-    # --- NEW RATING COLUMNS ---
     teaching_rating = Column(EnumType(TeachingRating), nullable=True)
     exam_difficulty = Column(EnumType(ExamDifficulty), nullable=True)
     overall_rating = Column(Integer, nullable=True) # From 1 to 5
-    # --- END NEW RATING COLUMNS ---
+
+    # --- NEW BOOLEAN COLUMNS ---
+    has_notes = Column(Boolean, nullable=True)
+    has_project = Column(Boolean, nullable=True)
+    has_exam = Column(Boolean, nullable=True)
+    # --- END NEW BOOLEAN COLUMNS ---
 
     field = relationship("Field")
     major = relationship("Major")
@@ -159,7 +164,6 @@ class Setting(Base):
     key = Column(String(255), unique=True, nullable=False)
     value = Column(String(255), nullable=False)
 
-# Corrected engine creation without the invalid 'encoding' argument
 engine = create_engine(DATABASE_URL, echo=False, connect_args={'charset': 'utf8mb4'})
 
 def create_tables():
