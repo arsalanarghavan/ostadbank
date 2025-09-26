@@ -26,7 +26,7 @@ from models import (Field, Major, Professor, Course, Experience, BotText, Admin,
 from constants import (
     States,
     FIELD_SELECT, MAJOR_SELECT, COURSE_SELECT, PROFESSOR_SELECT, PROFESSOR_ADD_NEW,
-    ATTENDANCE_CHOICE, CANCEL_SUBMISSION, ADMIN_MAIN_PANEL, ADMIN_LIST_ITEMS,
+    YES_NO_CHOICE, CANCEL_SUBMISSION, ADMIN_MAIN_PANEL, ADMIN_LIST_ITEMS,
     ADMIN_LIST_TEXTS, ITEM_ADD, ADMIN_ADD, ITEM_EDIT, TEXT_EDIT, ITEM_DELETE,
     ITEM_CONFIRM_DELETE, COMPLEX_ITEM_SELECT_PARENT, EXPERIENCE_APPROVAL,
     SUBMIT_EXP_BTN_KEY, MY_EXPS_BTN_KEY, RULES_BTN_KEY, SEARCH_BTN_KEY, CHECK_MEMBERSHIP,
@@ -185,10 +185,10 @@ def format_experience(exp, md_version: int = 2, redacted=False) -> str:
         teaching_style = notes = project = attendance_details = exam = conclusion = redacted_text
     else:
         teaching_style = def_md(exp.teaching_style)
-        notes = def_md(exp.notes)
-        project = def_md(exp.project)
+        notes = def_md(exp.notes) if exp.has_notes else def_md(db.get_text('exp_format_no'))
+        project = def_md(exp.project) if exp.has_project else def_md(db.get_text('exp_format_no'))
         attendance_details = def_md(exp.attendance_details)
-        exam = def_md(exp.exam)
+        exam = def_md(exp.exam) if exp.has_exam else def_md(db.get_text('exp_format_no'))
         conclusion = def_md(exp.conclusion)
 
     tags = (f"\\#{make_safe_tag(exp.field_name if is_dataclass else (exp.field.name if exp.field else ''))} "
@@ -196,22 +196,38 @@ def format_experience(exp, md_version: int = 2, redacted=False) -> str:
             f"\\#{make_safe_tag(exp.professor_name if is_dataclass else (exp.professor.name if exp.professor else ''))} "
             f"\\#{make_safe_tag(exp.course_name if is_dataclass else (exp.course.name if exp.course else ''))}")
             
-    attendance_status = db.get_text('exp_format_attendance_yes') if exp.attendance_required else db.get_text('exp_format_attendance_no')
+    # Conditional formatting for Yes/No fields
+    notes_status = db.get_text('exp_format_yes') if exp.has_notes else db.get_text('exp_format_no')
+    project_status = db.get_text('exp_format_yes') if exp.has_project else db.get_text('exp_format_no')
+    exam_status = db.get_text('exp_format_yes') if exp.has_exam else db.get_text('exp_format_no')
+    attendance_status = db.get_text('exp_format_yes') if exp.attendance_required else db.get_text('exp_format_no')
     
+    notes_section = f"*{def_md(db.get_text('exp_format_notes'))}*: {def_md(notes_status)}"
+    if exp.has_notes:
+        notes_section += f" - {notes}"
+    
+    project_section = f"*{def_md(db.get_text('exp_format_project'))}*: {def_md(project_status)}"
+    if exp.has_project:
+        project_section += f" - {project}"
+        
+    exam_section = f"*{def_md(db.get_text('exp_format_exam'))}*: {def_md(exam_status)}"
+    if exp.has_exam:
+        exam_section += f"\n{exam_difficulty_str}*توضیحات*: {exam}"
+
     return (f"*{def_md(db.get_text('exp_format_field'))}*: {field_name} \\({major_name}\\)\n\n"
             f"*{def_md(db.get_text('exp_format_professor'))}*: {professor_name}\n\n"
             f"*{def_md(db.get_text('exp_format_course'))}*: {course_name}\n\n"
             f"{teaching_rating_str}"
             f"*{def_md(db.get_text('exp_format_teaching'))}*: {teaching_style}\n\n"
-            f"*{def_md(db.get_text('exp_format_notes'))}*: {notes}\n\n"
-            f"*{def_md(db.get_text('exp_format_project'))}*: {project}\n\n"
+            f"{notes_section}\n\n"
+            f"{project_section}\n\n"
             f"*{def_md(db.get_text('exp_format_attendance'))}*: {def_md(attendance_status)} \\- {attendance_details}\n\n"
-            f"{exam_difficulty_str}"
-            f"*{def_md(db.get_text('exp_format_exam'))}*: {exam}\n\n"
+            f"{exam_section}\n\n"
             f"*{def_md(db.get_text('exp_format_conclusion'))}*: {conclusion}\n\n"
             f"{overall_rating_str}"
             f"{def_md(db.get_text('exp_format_footer'))}\n\n"
             f"*{def_md(db.get_text('exp_format_tags'))}*: {tags}")
+
 
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     db.add_user(update.effective_user.id, update.effective_user.first_name)
@@ -430,11 +446,11 @@ async def select_professor(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     professor_id = int(query.data.split('_')[-1])
     context.user_data['experience']['professor_id'] = professor_id
     try:
-        await query.edit_message_text(db.get_text('ask_teaching_style'))
+        await query.edit_message_text(db.get_text('ask_teaching_rating'), reply_markup=kb.teaching_rating_keyboard())
     except BadRequest as e:
         if "Message is not modified" not in str(e):
             logger.warning("Caught 'Message is not modified' error in select_professor")
-    return States.GETTING_TEACHING
+    return States.GETTING_TEACHING_RATING
 
 async def add_new_professor_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> States:
     query = update.callback_query
@@ -453,8 +469,8 @@ async def add_new_professor_receive_name(update: Update, context: ContextTypes.D
         return States.ADDING_PROFESSOR
     new_prof_obj = db.add_item(Professor, name=prof_name)
     context.user_data['experience']['professor_id'] = new_prof_obj.id
-    await update.message.reply_text(db.get_text('ask_teaching_style'))
-    return States.GETTING_TEACHING
+    await update.message.reply_text(db.get_text('ask_teaching_rating'), reply_markup=kb.teaching_rating_keyboard())
+    return States.GETTING_TEACHING_RATING
 
 async def get_text_input(update: Update, context: ContextTypes.DEFAULT_TYPE, field_name: str, next_state: States, prompt_key: str, reply_markup=None) -> States:
     user_input = update.message.text
@@ -464,27 +480,65 @@ async def get_text_input(update: Update, context: ContextTypes.DEFAULT_TYPE, fie
     context.user_data['experience'][field_name] = user_input
     await update.message.reply_text(db.get_text(prompt_key), reply_markup=reply_markup)
     return next_state
-
-async def get_teaching(update: Update, context: ContextTypes.DEFAULT_TYPE) -> States:
-    return await get_text_input(update, context, 'teaching_style', States.GETTING_TEACHING_RATING, 'ask_teaching_rating', kb.teaching_rating_keyboard())
-
+    
 async def get_teaching_rating(update: Update, context: ContextTypes.DEFAULT_TYPE) -> States:
     query = update.callback_query
     await query.answer()
     rating_name = query.data.split('_')[1]
     context.user_data['experience']['teaching_rating'] = TeachingRating[rating_name]
     try:
-        await query.edit_message_text(db.get_text('ask_notes'))
+        await query.edit_message_text(db.get_text('ask_teaching_style'))
     except BadRequest as e:
         if "Message is not modified" not in str(e):
             logger.warning("Caught 'Message is not modified' error in get_teaching_rating")
-    return States.GETTING_NOTES
+    return States.GETTING_TEACHING_DETAILS
 
-async def get_notes(update: Update, context: ContextTypes.DEFAULT_TYPE) -> States:
-    return await get_text_input(update, context, 'notes', States.GETTING_PROJECT, 'ask_project')
+async def get_teaching_details(update: Update, context: ContextTypes.DEFAULT_TYPE) -> States:
+    return await get_text_input(update, context, 'teaching_style', States.GETTING_NOTES_CHOICE, 'ask_notes_choice', kb.yes_no_keyboard('notes'))
 
-async def get_project(update: Update, context: ContextTypes.DEFAULT_TYPE) -> States:
-    return await get_text_input(update, context, 'project', States.GETTING_ATTENDANCE_CHOICE, 'ask_attendance_choice', kb.attendance_keyboard())
+async def get_notes_choice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> States:
+    query = update.callback_query
+    await query.answer()
+    has_notes = query.data == 'notes_yes'
+    context.user_data['experience']['has_notes'] = has_notes
+    if has_notes:
+        try:
+            await query.edit_message_text(db.get_text('ask_notes_details'))
+        except BadRequest as e:
+            if "Message is not modified" not in str(e): logger.warning("Error in get_notes_choice")
+        return States.GETTING_NOTES_DETAILS
+    else:
+        context.user_data['experience']['notes'] = None
+        try:
+            await query.edit_message_text(db.get_text('ask_project_choice'), reply_markup=kb.yes_no_keyboard('project'))
+        except BadRequest as e:
+            if "Message is not modified" not in str(e): logger.warning("Error in get_notes_choice")
+        return States.GETTING_PROJECT_CHOICE
+
+async def get_notes_details(update: Update, context: ContextTypes.DEFAULT_TYPE) -> States:
+    return await get_text_input(update, context, 'notes', States.GETTING_PROJECT_CHOICE, 'ask_project_choice', kb.yes_no_keyboard('project'))
+
+async def get_project_choice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> States:
+    query = update.callback_query
+    await query.answer()
+    has_project = query.data == 'project_yes'
+    context.user_data['experience']['has_project'] = has_project
+    if has_project:
+        try:
+            await query.edit_message_text(db.get_text('ask_project_details'))
+        except BadRequest as e:
+            if "Message is not modified" not in str(e): logger.warning("Error in get_project_choice")
+        return States.GETTING_PROJECT_DETAILS
+    else:
+        context.user_data['experience']['project'] = None
+        try:
+            await query.edit_message_text(db.get_text('ask_attendance_choice'), reply_markup=kb.yes_no_keyboard('attendance'))
+        except BadRequest as e:
+            if "Message is not modified" not in str(e): logger.warning("Error in get_project_choice")
+        return States.GETTING_ATTENDANCE_CHOICE
+
+async def get_project_details(update: Update, context: ContextTypes.DEFAULT_TYPE) -> States:
+    return await get_text_input(update, context, 'project', States.GETTING_ATTENDANCE_CHOICE, 'ask_attendance_choice', kb.yes_no_keyboard('attendance'))
 
 async def get_attendance_choice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> States:
     query = update.callback_query
@@ -498,22 +552,42 @@ async def get_attendance_choice(update: Update, context: ContextTypes.DEFAULT_TY
     return States.GETTING_ATTENDANCE_DETAILS
 
 async def get_attendance_details(update: Update, context: ContextTypes.DEFAULT_TYPE) -> States:
-    return await get_text_input(update, context, 'attendance_details', States.GETTING_EXAM, 'ask_exam')
+    return await get_text_input(update, context, 'attendance_details', States.GETTING_EXAM_CHOICE, 'ask_exam_choice', kb.yes_no_keyboard('exam'))
 
-async def get_exam(update: Update, context: ContextTypes.DEFAULT_TYPE) -> States:
-    return await get_text_input(update, context, 'exam', States.GETTING_EXAM_DIFFICULTY, 'ask_exam_difficulty', kb.exam_difficulty_keyboard())
-
+async def get_exam_choice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> States:
+    query = update.callback_query
+    await query.answer()
+    has_exam = query.data == 'exam_yes'
+    context.user_data['experience']['has_exam'] = has_exam
+    if has_exam:
+        try:
+            await query.edit_message_text(db.get_text('ask_exam_difficulty'), reply_markup=kb.exam_difficulty_keyboard())
+        except BadRequest as e:
+            if "Message is not modified" not in str(e): logger.warning("Error in get_exam_choice")
+        return States.GETTING_EXAM_DIFFICULTY
+    else:
+        context.user_data['experience']['exam'] = None
+        context.user_data['experience']['exam_difficulty'] = None
+        try:
+            await query.edit_message_text(db.get_text('ask_conclusion'))
+        except BadRequest as e:
+            if "Message is not modified" not in str(e): logger.warning("Error in get_exam_choice")
+        return States.GETTING_CONCLUSION
+        
 async def get_exam_difficulty(update: Update, context: ContextTypes.DEFAULT_TYPE) -> States:
     query = update.callback_query
     await query.answer()
     difficulty_name = query.data.split('_')[1]
     context.user_data['experience']['exam_difficulty'] = ExamDifficulty[difficulty_name]
     try:
-        await query.edit_message_text(db.get_text('ask_conclusion'))
+        await query.edit_message_text(db.get_text('ask_exam_details'))
     except BadRequest as e:
         if "Message is not modified" not in str(e):
             logger.warning("Caught 'Message is not modified' error in get_exam_difficulty")
-    return States.GETTING_CONCLUSION
+    return States.GETTING_EXAM_DETAILS
+
+async def get_exam_details(update: Update, context: ContextTypes.DEFAULT_TYPE) -> States:
+    return await get_text_input(update, context, 'exam', States.GETTING_CONCLUSION, 'ask_conclusion')
 
 async def get_conclusion(update: Update, context: ContextTypes.DEFAULT_TYPE) -> States:
     return await get_text_input(update, context, 'conclusion', States.GETTING_OVERALL_RATING, 'ask_overall_rating', kb.overall_rating_keyboard())
@@ -1112,14 +1186,17 @@ submission_handler = ConversationHandler(
             CallbackQueryHandler(add_new_professor_start, pattern=PROFESSOR_ADD_NEW)
         ],
         States.ADDING_PROFESSOR: [MessageHandler(filters.TEXT & ~filters.COMMAND, add_new_professor_receive_name)],
-        States.GETTING_TEACHING: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_teaching)],
         States.GETTING_TEACHING_RATING: [CallbackQueryHandler(get_teaching_rating, pattern=r"^teaching_")],
-        States.GETTING_NOTES: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_notes)],
-        States.GETTING_PROJECT: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_project)],
-        States.GETTING_ATTENDANCE_CHOICE: [CallbackQueryHandler(get_attendance_choice, pattern=ATTENDANCE_CHOICE)],
+        States.GETTING_TEACHING_DETAILS: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_teaching_details)],
+        States.GETTING_NOTES_CHOICE: [CallbackQueryHandler(get_notes_choice, pattern=YES_NO_CHOICE)],
+        States.GETTING_NOTES_DETAILS: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_notes_details)],
+        States.GETTING_PROJECT_CHOICE: [CallbackQueryHandler(get_project_choice, pattern=YES_NO_CHOICE)],
+        States.GETTING_PROJECT_DETAILS: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_project_details)],
+        States.GETTING_ATTENDANCE_CHOICE: [CallbackQueryHandler(get_attendance_choice, pattern=YES_NO_CHOICE)],
         States.GETTING_ATTENDANCE_DETAILS: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_attendance_details)],
-        States.GETTING_EXAM: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_exam)],
+        States.GETTING_EXAM_CHOICE: [CallbackQueryHandler(get_exam_choice, pattern=YES_NO_CHOICE)],
         States.GETTING_EXAM_DIFFICULTY: [CallbackQueryHandler(get_exam_difficulty, pattern=r"^exam_")],
+        States.GETTING_EXAM_DETAILS: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_exam_details)],
         States.GETTING_CONCLUSION: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_conclusion)],
         States.GETTING_OVERALL_RATING: [CallbackQueryHandler(get_overall_rating_and_finish, pattern=r"^rating_")],
     },

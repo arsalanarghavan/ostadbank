@@ -167,6 +167,7 @@ def initialize_database():
             'admin_content_deleted_success': '✅ محتوای نظر با موفقیت در کانال ویرایش شد.'
         }
 
+
         for key, value in default_texts.items():
             if not session.query(BotText).filter_by(key=key).first():
                 session.add(BotText(key=key, value=value))
