@@ -8,8 +8,15 @@ def main_menu():
     """Returns the main menu keyboard for regular users."""
     return ReplyKeyboardMarkup([
         [db.get_text('btn_submit_experience'), db.get_text('btn_search')],
-        [db.get_text('btn_my_experiences'), db.get_text('btn_rules')]
+        [db.get_text('btn_my_experiences'), db.get_text('btn_rules')],
+        [db.get_text('btn_ranking')]
     ], resize_keyboard=True)
+
+def ranking_menu():
+    """Returns the ranking menu keyboard."""
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton(db.get_text('btn_best_professors'), callback_data="best_professors")],
+    ])
     
 def yes_no_keyboard(prefix: str):
     """Creates a generic Yes/No keyboard with a given prefix."""

@@ -29,9 +29,10 @@ from constants import (
     YES_NO_CHOICE, CANCEL_SUBMISSION, ADMIN_MAIN_PANEL, ADMIN_LIST_ITEMS,
     ADMIN_LIST_TEXTS, ITEM_ADD, ADMIN_ADD, ITEM_EDIT, TEXT_EDIT, ITEM_DELETE,
     ITEM_CONFIRM_DELETE, COMPLEX_ITEM_SELECT_PARENT, EXPERIENCE_APPROVAL,
-    SUBMIT_EXP_BTN_KEY, MY_EXPS_BTN_KEY, RULES_BTN_KEY, SEARCH_BTN_KEY, CHECK_MEMBERSHIP,
-    ADMIN_MANAGE_CHANNELS, ADMIN_ADD_CHANNEL, ADMIN_DELETE_CHANNEL, ADMIN_TOGGLE_FORCE_SUB,
-    ADMIN_MANAGE_EXPERIENCES, ADMIN_LIST_PENDING_EXPERIENCES, ADMIN_PENDING_EXPERIENCE_DETAIL,
+    SUBMIT_EXP_BTN_KEY, MY_EXPS_BTN_KEY, RULES_BTN_KEY, SEARCH_BTN_KEY, RANKING_BTN_KEY,
+    BEST_PROFESSORS_BTN_KEY, CHECK_MEMBERSHIP, ADMIN_MANAGE_CHANNELS, ADMIN_ADD_CHANNEL,
+    ADMIN_DELETE_CHANNEL, ADMIN_TOGGLE_FORCE_SUB, ADMIN_MANAGE_EXPERIENCES,
+    ADMIN_LIST_PENDING_EXPERIENCES, ADMIN_PENDING_EXPERIENCE_DETAIL,
     ADMIN_SEARCH_EXPERIENCES, ADMIN_SEARCH_RESULTS_PAGE, ADMIN_SEARCH_DETAIL,
     EXPERIENCE_DELETE_CONTENT, USER_SEARCH_RESULT, USER_SEARCH_NO_RESULTS_KEY,
     USER_SEARCH_HEADER_KEY, USER_SEARCH_PROMPT_KEY
@@ -1169,6 +1170,48 @@ async def inline_search_handler(update: Update, context: ContextTypes.DEFAULT_TY
         )
     await update.inline_query.answer(results, cache_time=5)
 
+async def ranking_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handles the ranking button press and shows the ranking menu."""
+    if not await check_channel_membership(update, context):
+        return
+    await update.message.reply_text(
+        db.get_text('ranking_menu_header'),
+        reply_markup=kb.ranking_menu(),
+        parse_mode=constants.ParseMode.MARKDOWN_V2
+    )
+
+async def best_professors_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Fetches and displays the top-ranked professors."""
+    query = update.callback_query
+    await query.answer()
+
+    top_professors = db.get_top_professors()
+
+    if not top_professors:
+        await query.edit_message_text(db.get_text('top_professors_no_results'))
+        return
+
+    response_text = db.get_text('top_professors_header')
+    for i, prof in enumerate(top_professors):
+        # Format: 🥇 1. Professor Name - Score: 4.75 (from 15 reviews)
+        rank_emoji = "🥇" if i == 0 else "🥈" if i == 1 else "🥉" if i == 2 else f"**{i+1}\\.**"
+        score = round(prof.weighted_score, 2) if prof.weighted_score is not None else 0
+        response_text += (
+            f"{rank_emoji} {escape_markdown(prof.name, version=2)}\n"
+            f"⭐️ امتیاز: `{score}` "
+            f"\\(از `{prof.review_count}` نظر\\)\n\n"
+        )
+    
+    try:
+        await query.edit_message_text(
+            response_text,
+            parse_mode=constants.ParseMode.MARKDOWN_V2
+        )
+    except BadRequest as e:
+        if "Message is not modified" not in str(e):
+            logger.warning(f"Error in best_professors_callback: {e}")
+
+
 ptb_app = Application.builder().token(config.BOT_TOKEN).build()
 
 conv_defaults = {'per_message': False}
@@ -1273,6 +1316,7 @@ ptb_app.add_handler(CommandHandler("start", start_command))
 ptb_app.add_handler(CommandHandler("admin", admin_command))
 ptb_app.add_handler(MessageHandler(filters.Regex('^' + db.get_text(MY_EXPS_BTN_KEY) + '$'), my_experiences_command))
 ptb_app.add_handler(MessageHandler(filters.Regex('^' + db.get_text(RULES_BTN_KEY) + '$'), rules_command))
+ptb_app.add_handler(MessageHandler(filters.Regex('^' + db.get_text(RANKING_BTN_KEY) + '$'), ranking_command))
 ptb_app.add_handler(MessageHandler(filters.Regex('^' + db.get_text('btn_main_menu') + '$'), back_to_main_menu))
 
 # Admin panel command handlers
@@ -1302,6 +1346,7 @@ ptb_app.add_handler(InlineQueryHandler(inline_search_handler))
 
 # Callback handlers for inline buttons
 ptb_app.add_handler(CallbackQueryHandler(membership_check_callback, pattern=CHECK_MEMBERSHIP))
+ptb_app.add_handler(CallbackQueryHandler(best_professors_callback, pattern=BEST_PROFESSORS_BTN_KEY))
 ptb_app.add_handler(CallbackQueryHandler(admin_panel_callback_inline, pattern="^admin_main_panel_inline$"))
 ptb_app.add_handler(CallbackQueryHandler(experience_approval_handler, pattern=EXPERIENCE_APPROVAL))
 ptb_app.add_handler(CallbackQueryHandler(delete_experience_content_callback, pattern=EXPERIENCE_DELETE_CONTENT))

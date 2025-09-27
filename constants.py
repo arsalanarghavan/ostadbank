@@ -46,6 +46,9 @@ class States(Enum):
     # Experience Search Flow
     GETTING_PROFESSOR_SEARCH_QUERY = auto()
     GETTING_USER_SEARCH_QUERY = auto()
+    
+    # Ranking Flow
+    RANKING_MENU = auto()
 
 # --- Callback Data Patterns ---
 # User flow patterns
@@ -58,6 +61,7 @@ YES_NO_CHOICE = r"^(notes|project|exam|attendance)_(yes|no)$" # Generic Yes/No
 CANCEL_SUBMISSION = r"^cancel_submission$"
 CHECK_MEMBERSHIP = r"^check_membership$"
 USER_SEARCH_RESULT = r"^user_search_result_"
+BEST_PROFESSORS_BTN_KEY = r"^best_professors$"
 
 # Admin panel patterns
 ADMIN_MAIN_PANEL = r"^admin_main_panel_inline$"
@@ -98,6 +102,7 @@ SUBMIT_EXP_BTN_KEY = 'btn_submit_experience'
 MY_EXPS_BTN_KEY = 'btn_my_experiences'
 RULES_BTN_KEY = 'btn_rules'
 SEARCH_BTN_KEY = 'btn_search'
+RANKING_BTN_KEY = 'btn_ranking'
 USER_SEARCH_PROMPT_KEY = 'user_search_prompt'
 USER_SEARCH_NO_RESULTS_KEY = 'user_search_no_results'
 USER_SEARCH_HEADER_KEY = 'user_search_header'

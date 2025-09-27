@@ -1,12 +1,12 @@
 # database.py
 
 from sqlalchemy.orm import sessionmaker, joinedload
-from sqlalchemy import or_
+from sqlalchemy import or_, func, case
 from contextlib import contextmanager
 import math
 from models import (engine, User, Admin, BotText, Field,
                     Major, Professor, Course, Experience, ExperienceStatus,
-                    RequiredChannel, Setting, ExperienceData)
+                    RequiredChannel, Setting, ExperienceData, TeachingRating)
 import config
 
 Session = sessionmaker(bind=engine)
@@ -120,6 +120,11 @@ def initialize_database():
             'btn_my_experiences': '📖 تجربه‌های من',
             'btn_rules': '📜 قوانین',
             'btn_search': '🔎 جستجو',
+            'btn_ranking': '🏆 رتبه‌بندی اساتید',
+            'btn_best_professors': '🥇 بهترین اساتید',
+            'ranking_menu_header': '🏆 **منوی رتبه‌بندی** 🏆\n\nاز این بخش می‌توانید به لیست اساتید برتر دسترسی داشته باشید.',
+            'top_professors_header': '🏆 **۱۰ استاد برتر از نظر دانشجویان** 🏆\n\n',
+            'top_professors_no_results': 'هنوز استادی با حداقل ۳ نظر ثبت شده برای رتبه‌بندی وجود ندارد.',
             'btn_admin_stats': '📊 آمار ربات',
             'btn_admin_broadcast': '📢 ارسال پیام همگانی',
             'btn_admin_single_message': '👤 ارسال پیام به کاربر',
@@ -489,3 +494,40 @@ def get_experience_with_session(session, exp_id):
         joinedload(Experience.professor),
         joinedload(Experience.course)
     ).filter(Experience.id == exp_id).first()
+
+def get_top_professors(limit=10):
+    """
+    Calculates and returns the top professors based on a weighted score
+    of overall and teaching ratings.
+    """
+    with session_scope() as s:
+        # Map enum to a numerical value for calculation
+        teaching_rating_score = case(
+            (Experience.teaching_rating == TeachingRating.EXCELLENT, 5),
+            (Experience.teaching_rating == TeachingRating.GOOD, 4),
+            (Experience.teaching_rating == TeachingRating.AVERAGE, 3),
+            (Experience.teaching_rating == TeachingRating.POOR, 2),
+            else_=0
+        )
+
+        # Subquery to calculate averages and counts per professor
+        subquery = s.query(
+            Experience.professor_id,
+            func.avg(Experience.overall_rating).label('avg_overall'),
+            func.avg(teaching_rating_score).label('avg_teaching'),
+            func.count(Experience.id).label('review_count')
+        ).filter(Experience.status == ExperienceStatus.APPROVED)\
+         .group_by(Experience.professor_id).subquery()
+
+        # Main query to join with Professor and calculate the final weighted score
+        # Formula: 60% overall rating + 40% teaching rating
+        professors = s.query(
+            Professor.name,
+            subquery.c.review_count,
+            (subquery.c.avg_overall * 0.6 + subquery.c.avg_teaching * 0.4).label('weighted_score')
+        ).join(subquery, Professor.id == subquery.c.professor_id)\
+         .filter(subquery.c.review_count >= 3)\
+         .order_by(func.coalesce((subquery.c.avg_overall * 0.6 + subquery.c.avg_teaching * 0.4), 0).desc())\
+         .limit(limit).all()
+        
+        return professors
