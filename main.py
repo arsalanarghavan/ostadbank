@@ -1188,15 +1188,18 @@ async def best_professors_callback(update: Update, context: ContextTypes.DEFAULT
     top_professors = db.get_top_professors()
 
     if not top_professors:
-        await query.edit_message_text(db.get_text('top_professors_no_results'), parse_mode=constants.ParseMode.MARKDOWN_V2)
+        await query.edit_message_text(
+            db.get_text('top_professors_no_results'), 
+            parse_mode=constants.ParseMode.MARKDOWN_V2
+        )
         return
 
     response_text = db.get_text('top_professors_header')
     for i, prof in enumerate(top_professors):
-        rank_emoji = "🥇" if i == 0 else "🥈" if i == 1 else "🥉" if i == 2 else f"**{i+1}**\\."
+        rank_emoji = "🥇" if i == 0 else "🥈" if i == 1 else "🥉" if i == 2 else f"**{i+1}**"
         score = round(prof.weighted_score, 2) if prof.weighted_score is not None else 0
         response_text += (
-            f"{rank_emoji} {escape_markdown(prof.name, version=2)}\n"
+            f"{rank_emoji} \\- {escape_markdown(prof.name, version=2)}\n"
             f"⭐️ امتیاز: `{score}` "
             f"\\(از `{prof.review_count}` نظر\\)\n\n"
         )
@@ -1208,7 +1211,8 @@ async def best_professors_callback(update: Update, context: ContextTypes.DEFAULT
         )
     except BadRequest as e:
         if "Message is not modified" not in str(e):
-            logger.warning(f"Error in best_professors_callback: {e}")
+            logger.error(f"Error in best_professors_callback: {e}")
+            await query.message.reply_text("خطایی در نمایش رتبه‌بندی رخ داد.")
 
 
 ptb_app = Application.builder().token(config.BOT_TOKEN).build()
