@@ -1188,13 +1188,12 @@ async def best_professors_callback(update: Update, context: ContextTypes.DEFAULT
     top_professors = db.get_top_professors()
 
     if not top_professors:
-        await query.edit_message_text(db.get_text('top_professors_no_results'))
+        await query.edit_message_text(db.get_text('top_professors_no_results'), parse_mode=constants.ParseMode.MARKDOWN_V2)
         return
 
     response_text = db.get_text('top_professors_header')
     for i, prof in enumerate(top_professors):
-        # Format: 🥇 1. Professor Name - Score: 4.75 (from 15 reviews)
-        rank_emoji = "🥇" if i == 0 else "🥈" if i == 1 else "🥉" if i == 2 else f"**{i+1}\\.**"
+        rank_emoji = "🥇" if i == 0 else "🥈" if i == 1 else "🥉" if i == 2 else f"**{i+1}**\\."
         score = round(prof.weighted_score, 2) if prof.weighted_score is not None else 0
         response_text += (
             f"{rank_emoji} {escape_markdown(prof.name, version=2)}\n"
@@ -1214,7 +1213,7 @@ async def best_professors_callback(update: Update, context: ContextTypes.DEFAULT
 
 ptb_app = Application.builder().token(config.BOT_TOKEN).build()
 
-conv_defaults = {'per_message': False}
+conv_defaults = {'per_user': True, 'per_chat': True, 'per_message': False}
 submission_handler = ConversationHandler(
     entry_points=[
         MessageHandler(filters.Regex('^' + db.get_text(SUBMIT_EXP_BTN_KEY) + '$'), submission_start),
